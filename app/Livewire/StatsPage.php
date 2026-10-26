@@ -48,6 +48,35 @@ class StatsPage extends Component
         ];
     }
 
+    /**
+     * Median seconds for each step of live, alerted projects in the last 7 days.
+     *
+     * @return list<array{label: string, median: int|null, count: int}>
+     */
+    public static function speed(): array
+    {
+        $projects = Project::query()
+            ->where('source', 'freelancer')
+            ->whereNotNull('alerted_at')
+            ->where('created_at', '>=', now()->subDays(7))
+            ->get();
+
+        $steps = [
+            'Posted to found' => fn (Project $p) => $p->posted_at ? $p->posted_at->diffInSeconds($p->created_at, true) : null,
+            'Found to alert' => fn (Project $p) => $p->created_at->diffInSeconds($p->alerted_at, true),
+            'Alert to draft ready' => fn (Project $p) => $p->drafted_at ? $p->alerted_at->diffInSeconds($p->drafted_at, true) : null,
+            'Alert to you bid' => fn (Project $p) => $p->bid_placed_at ? $p->alerted_at->diffInSeconds($p->bid_placed_at, true) : null,
+        ];
+
+        $out = [];
+        foreach ($steps as $label => $fn) {
+            $values = $projects->map($fn)->filter(fn ($v) => $v !== null)->map(fn ($v) => (int) $v)->sort()->values();
+            $out[] = ['label' => $label, 'median' => $values->isEmpty() ? null : (int) $values->median(), 'count' => $values->count()];
+        }
+
+        return $out;
+    }
+
     public function render(Settings $settings)
     {
         $bids = Project::query()->whereNotNull('bid_placed_at')->get();
@@ -62,6 +91,7 @@ class StatsPage extends Component
 
         return view('livewire.stats-page', [
             'overall' => self::rates($bids),
+            'speed' => self::speed(),
             'byCategory' => $byCategory,
             'byBucket' => $byBucket,
             'thisWeek' => $bids->filter(fn (Project $p) => $p->bid_placed_at->gte(now()->startOfWeek()))->count(),

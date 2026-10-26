@@ -87,6 +87,20 @@
         @endif
     </div>
 
+    {{-- Speed timeline --}}
+    @php($timeline = $project->timeline())
+    @if (count($timeline) > 1)
+        <div class="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-xs text-slate-500">
+            <span class="font-medium text-slate-600">Timeline</span>
+            @foreach ($timeline as $step)
+                <span wire:key="tl-{{ $step['label'] }}" title="{{ $step['at']->format('H:i:s') }}">
+                    @if ($step['seconds'] !== null)<span class="text-slate-400">→ +{{ \App\Models\Project::duration($step['seconds']) }}</span>@endif
+                    {{ $step['label'] }}
+                </span>
+            @endforeach
+        </div>
+    @endif
+
     {{-- AI state --}}
     @if ($project->isBusy())
         <div class="card flex items-center gap-3 text-sm text-teal-800">

@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Project;
+use App\Services\CostTracker;
 use App\Services\DraftGate;
 use App\Services\Freelancer\RulesFilter;
 use App\Services\ScoreAdjuster;
@@ -30,7 +31,7 @@ class ScoreProject implements ShouldQueue
             ->update(['ai_state' => 'failed', 'ai_error' => 'Scoring failed: '.mb_substr((string) $e?->getMessage(), 0, 300)]);
     }
 
-    public function handle(Scorer $scorer, Settings $settings, Telegram $telegram, DraftGate $gate, ScoreAdjuster $adjuster): void
+    public function handle(Scorer $scorer, Settings $settings, Telegram $telegram, DraftGate $gate, ScoreAdjuster $adjuster, CostTracker $costs): void
     {
         $project = Project::query()->find($this->projectId);
         if ($project === null || $project->purged_at !== null) {
@@ -54,6 +55,7 @@ class ScoreProject implements ShouldQueue
             'fit_score' => $adjusted['score'],
             'category' => $result['category'],
             'ai_state' => 'scored',
+            'scored_at' => now(),
         ]);
 
         $high = $adjusted['score'] >= $settings->int('threshold_high');
@@ -72,9 +74,15 @@ class ScoreProject implements ShouldQueue
             return;
         }
 
-        // High fit is drafted automatically (then alerted); paste mode can ask to always draft.
+        // High fit: alert FIRST (seconds count), then draft; the draft follows as silent messages.
+        // Paste mode can ask to always draft (no alerts for pasted projects).
         if ($project->auto_draft || $high) {
-            DraftProject::dispatch($project->id, alert: $live && $high);
+            $alerting = $live && $high && ! $settings->get('paused');
+            $capReached = $costs->capReached();
+            if ($alerting) {
+                $telegram->projectAlert($project, capReached: $capReached, draftComing: ! $capReached);
+            }
+            DraftProject::dispatch($project->id, alert: $alerting && ! $capReached);
 
             return;
         }
