@@ -41,7 +41,7 @@ class BotCommands
         $this->settings->set(['paused' => false]);
 
         return $this->settings->pollingActive()
-            ? '▶️ Resumed. Polling every '.$this->settings->int('poll_interval_minutes').' min.'
+            ? '▶️ Resumed. Polling every '.$this->settings->int('poll_interval_seconds').'s.'
             : '▶️ Resumed, but polling is switched off in Settings.';
     }
 

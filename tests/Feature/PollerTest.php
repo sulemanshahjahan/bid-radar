@@ -3,15 +3,19 @@
 namespace Tests\Feature;
 
 use App\Jobs\ScoreProject;
+use App\Livewire\SettingsPage;
 use App\Models\ApiCall;
 use App\Models\Project;
+use App\Models\User;
 use App\Services\Freelancer\Poller;
 use App\Services\Settings;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Livewire\Livewire;
 use Tests\TestCase;
 
 class PollerTest extends TestCase
@@ -132,10 +136,50 @@ class PollerTest extends TestCase
         $this->fakeApi();
 
         app(Poller::class)->poll();
-        Carbon::setTestNow(now()->addSeconds(30));
+        Carbon::setTestNow(now()->addSeconds(15));
 
         $this->assertSame('waiting', app(Poller::class)->poll()['status']);
         Http::assertSentCount(2);
+    }
+
+    public function test_a_30_second_interval_polls_every_30_seconds_but_refreshes_bids_every_2_minutes(): void
+    {
+        app(Settings::class)->set(['poll_interval_seconds' => 30]);
+        $this->makeProject(['source' => 'freelancer', 'freelancer_id' => 555, 'status' => 'drafted'], ['bid_count' => 10]);
+        $this->fakeApi();
+        Http::fake(['www.freelancer.com/api/projects/0.1/projects/?*' => Http::response(['status' => 'success', 'result' => ['projects' => []]])]);
+        $searches = fn () => Http::recorded(fn (Request $r) => str_contains($r->url(), 'projects/active'))->count();
+        $refreshes = fn () => Http::recorded(fn (Request $r) => str_contains($r->url(), 'projects/0.1/projects/?'))->count();
+
+        app(Poller::class)->poll();
+        Carbon::setTestNow(now()->addSeconds(15));
+        $this->assertSame('waiting', app(Poller::class)->poll()['status']);
+
+        foreach (range(1, 4) as $i) {
+            Carbon::setTestNow(now()->addSeconds(30));
+            $this->assertSame('ok', app(Poller::class)->poll()['status']);
+        }
+
+        $this->assertSame(5, $searches(), 'Searched at 0, 45, 75, 105 and 135 seconds');
+        $this->assertSame(2, $refreshes(), 'Bid stats at 0 and 135 seconds only');
+    }
+
+    public function test_the_scheduler_runs_the_poller_every_30_seconds(): void
+    {
+        $event = collect(app(Schedule::class)->events())
+            ->first(fn ($e) => str_contains($e->command, 'bidradar:poll'));
+
+        $this->assertTrue($event->isRepeatable());
+        $this->assertSame(30, $event->repeatSeconds);
+    }
+
+    public function test_settings_refuse_an_interval_under_30_seconds(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        Livewire::test(SettingsPage::class)
+            ->set('form.poll_interval_seconds', 10)->call('save')
+            ->assertHasErrors('form.poll_interval_seconds');
     }
 
     public function test_429_backs_off_exponentially_and_skips_the_cycle(): void

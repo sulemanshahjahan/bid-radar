@@ -137,9 +137,9 @@
                 Paused (same as Telegram /pause)
             </label>
             <label class="block max-w-40">
-                <span class="label">Poll every (minutes)</span>
-                <input type="number" min="2" max="60" wire:model="form.poll_interval_minutes" class="field">
-                @error('form.poll_interval_minutes') <span class="text-xs text-red-600">{{ $message }}</span> @enderror
+                <span class="label">Poll every (seconds)</span>
+                <input type="number" min="30" max="3600" step="30" wire:model="form.poll_interval_seconds" class="field">
+                @error('form.poll_interval_seconds') <span class="text-xs text-red-600">{{ $message }}</span> @enderror
             </label>
             @unless ($pollingAllowed)
                 <p class="rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-600">
