@@ -26,13 +26,17 @@ class ProjectList extends Component
     {
         $medium = $settings->int('threshold_medium');
 
+        // Purged projects I never acted on have nothing left to show. The low-fit view lists
+        // newest first, so recent projects are never pushed past the limit by older ones.
         $projects = Project::query()
             ->with('latestDraft')
             ->when($this->status !== 'all', fn ($q) => $q->where('status', $this->status))
-            ->when(! $this->showLow, fn ($q) => $q->visible($medium))
-            ->orderByRaw('fit_score IS NULL DESC')
-            ->orderByDesc('fit_score')
+            ->where(fn ($q) => $q->whereNull('purged_at')->orWhere('status', '!=', 'new'))
+            ->when(! $this->showLow, fn ($q) => $q->visible($medium)
+                ->orderByRaw('fit_score IS NULL DESC')
+                ->orderByDesc('fit_score'))
             ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->limit(100)
             ->get();
 
