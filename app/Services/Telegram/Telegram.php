@@ -2,6 +2,7 @@
 
 namespace App\Services\Telegram;
 
+use App\Models\Draft;
 use App\Models\Project;
 use App\Services\BidTracker;
 use App\Services\CostTracker;
@@ -27,14 +28,47 @@ class Telegram
         return $this->configured() && (string) $chatId === (string) config('bidradar.telegram.chat_id');
     }
 
+    /**
+     * The project alert. Plays a sound only for a top project (adjusted score at or above
+     * Auto-draft and fewer than 10 bids); every other project alert is silent. When a draft
+     * is ready, two silent follow-ups carry the proposal text alone, then the bid and delivery,
+     * so each can be copied on a phone with one long-press (the numbers also tap-to-copy).
+     */
     public function projectAlert(Project $project, bool $quiet = false, bool $capReached = false, ?string $note = null): bool
     {
-        $sent = $this->send(self::alertText($project, $capReached, $note), self::alertButtons($project), $quiet, 'alert');
-        if ($sent) {
-            $project->forceFill(['alerted_at' => now()])->save();
+        $silent = $quiet || ! self::isTopProject($project);
+        $sent = $this->send(self::alertText($project, $capReached, $note), self::alertButtons($project), $silent, 'alert');
+        if (! $sent) {
+            return false;
+        }
+        $project->forceFill(['alerted_at' => now()])->save();
+
+        $draft = $project->latestDraft()->first();
+        if ($draft !== null && ! $capReached && $note === null) {
+            $this->send(htmlspecialchars($draft->finalText(), ENT_QUOTES | ENT_HTML5), [], true, 'alert_copy');
+            $this->send(self::bidText($draft), [], true, 'alert_copy');
         }
 
-        return $sent;
+        return true;
+    }
+
+    public static function isTopProject(Project $project): bool
+    {
+        return $project->fit_score !== null
+            && $project->fit_score >= app(Settings::class)->int('threshold_high')
+            && (int) $project->detail('bid_count', 0) < 10;
+    }
+
+    /** Bid amount and delivery days, each in a tap-to-copy code span. */
+    public static function bidText(Draft $draft): string
+    {
+        $amount = rtrim(rtrim(number_format((float) $draft->bid_amount, 2, '.', ''), '0'), '.');
+        $lines = ['Bid: <code>'.$amount.'</code> '.$draft->currency.($draft->is_hourly ? ' per hour' : '')];
+        $lines[] = $draft->delivery_days
+            ? 'Delivery: <code>'.$draft->delivery_days.'</code> days'
+            : 'Delivery: not set (no turnaround for this category)';
+
+        return implode("\n", $lines);
     }
 
     public function reply(string $text): bool
