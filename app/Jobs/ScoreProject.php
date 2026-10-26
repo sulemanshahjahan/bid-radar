@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\Project;
 use App\Services\Scoring\Scorer;
 use App\Services\Settings;
+use App\Services\Telegram\Telegram;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Throwable;
@@ -19,7 +20,7 @@ class ScoreProject implements ShouldQueue
 
     public function __construct(public readonly int $projectId) {}
 
-    public function handle(Scorer $scorer, Settings $settings): void
+    public function handle(Scorer $scorer, Settings $settings, Telegram $telegram): void
     {
         $project = Project::query()->find($this->projectId);
         if ($project === null || $project->purged_at !== null) {
@@ -43,9 +44,20 @@ class ScoreProject implements ShouldQueue
             'ai_state' => 'scored',
         ]);
 
-        // High fit is drafted automatically; paste mode can ask to always draft.
-        if ($project->auto_draft || $result['fit_score'] >= $settings->int('threshold_high')) {
-            DraftProject::dispatch($project->id);
+        $high = $result['fit_score'] >= $settings->int('threshold_high');
+        $medium = $result['fit_score'] >= $settings->int('threshold_medium');
+        $live = $project->source === 'freelancer';
+
+        // High fit is drafted automatically (then alerted); paste mode can ask to always draft.
+        if ($project->auto_draft || $high) {
+            DraftProject::dispatch($project->id, alert: $live && $high);
+
+            return;
+        }
+
+        // Medium fit: listed in the feed; optional quiet alert.
+        if ($live && $medium && $settings->get('quiet_alerts') && ! $settings->get('paused')) {
+            $telegram->projectAlert($project->fresh(), quiet: true);
         }
     }
 }

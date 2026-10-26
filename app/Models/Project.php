@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
     'source', 'freelancer_id', 'url', 'title', 'description', 'details', 'scoring',
     'category', 'fit_score', 'status', 'ai_state', 'ai_error', 'auto_draft',
     'my_bid_amount', 'my_bid_currency', 'bid_count_at_bid', 'avg_bid_at_bid',
-    'bid_placed_at', 'posted_at', 'purged_at',
+    'bid_placed_at', 'posted_at', 'purged_at', 'filter_reason', 'alerted_at',
 ])]
 class Project extends Model
 {
@@ -40,6 +40,7 @@ class Project extends Model
             'bid_placed_at' => 'datetime',
             'posted_at' => 'datetime',
             'purged_at' => 'datetime',
+            'alerted_at' => 'datetime',
         ];
     }
 
@@ -55,7 +56,7 @@ class Project extends Model
 
     public function scopeVisible(Builder $query, int $mediumThreshold): Builder
     {
-        return $query->where(fn (Builder $q) => $q
+        return $query->where('ai_state', '!=', 'filtered')->where(fn (Builder $q) => $q
             ->whereNull('fit_score')
             ->orWhere('fit_score', '>=', $mediumThreshold)
             ->orWhere('status', '!=', 'new'));

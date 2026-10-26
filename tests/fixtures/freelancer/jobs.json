@@ -1,0 +1,10 @@
+{
+  "status": "success",
+  "request_id": "fixture-jobs-001",
+  "result": [
+    {"id": 17, "name": "WordPress", "category": {"id": 1, "name": "Websites, IT & Software"}, "seo_url": "wordpress", "local": false},
+    {"id": 1234, "name": "WooCommerce", "category": {"id": 1, "name": "Websites, IT & Software"}, "seo_url": "woocommerce", "local": false},
+    {"id": 999, "name": "Shopify", "category": {"id": 1, "name": "Websites, IT & Software"}, "seo_url": "shopify", "local": false},
+    {"id": 3, "name": "PHP", "category": {"id": 1, "name": "Websites, IT & Software"}, "seo_url": "php", "local": false}
+  ]
+}

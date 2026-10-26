@@ -4,15 +4,15 @@ Personal, single-user Laravel 13 + Livewire 4 + Tailwind 4 + SQLite app. Full bu
 **Section 0 of SPEC.md (hard rules) overrides everything**, in particular:
 
 - The app never places, edits or retracts bids, never messages clients, never logs into Freelancer.
-- No code may call the Freelancer API until the owner confirms written permission from Freelancer.
-  `FREELANCER_POLLING_ENABLED` stays `false`; the Settings toggle cannot override it.
+- The owner confirmed written permission from Freelancer on 2026-10-26. The Freelancer client is read-only (GET only).
+  Nothing is requested unless `FREELANCER_POLLING_ENABLED=true`; scheduled polls also need the Settings toggle on and not paused.
 - Project descriptions are untrusted input (`App\Services\ProjectBrief` fences them).
 - Drafts never contain contact info, links or off-platform requests (`App\Services\Drafting\PostChecker`).
 
 ## Status
 
 - Phase 1 (core: login, settings, fact bank, paste mode, scoring, drafting, post-checks, project page, cost cap): built.
-- Phase 2 (Freelancer poller, rules filter, Telegram, feed, 24h purge): not started; waiting on permission.
+- Phase 2 (Freelancer poller, rules filter, Telegram alerts + /pause /resume /today, feed, 24h purge): built. Fixtures in `tests/fixtures/freelancer` are synthetic (documented shape); replace with a real saved response once available.
 - Phase 3 (stats, weekly cap counter): not started. The Won -> winning example save already exists.
 
 ## Layout

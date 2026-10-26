@@ -1,12 +1,18 @@
-<div @if ($anyBusy) wire:poll.3s @endif class="space-y-4">
+<div @if ($anyBusy) wire:poll.3s @elseif ($polling === 'on') wire:poll.30s @endif class="space-y-4">
     <div class="flex items-center justify-between gap-3">
-        <h1 class="text-xl font-semibold">Projects</h1>
+        <h1 class="text-xl font-semibold">Feed</h1>
         <a href="{{ route('paste') }}" wire:navigate class="btn-primary">+ Paste a project</a>
     </div>
 
-    <p class="text-xs text-slate-500">
-        AI spend today: <span class="font-medium {{ $spentToday >= $cap ? 'text-red-600' : 'text-slate-700' }}">${{ number_format($spentToday, 3) }}</span>
-        of ${{ number_format($cap, 2) }} cap
+    <p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+        <span @class([
+            'rounded-full px-2 py-0.5 font-medium',
+            'bg-emerald-100 text-emerald-800' => $polling === 'on',
+            'bg-amber-100 text-amber-800' => in_array($polling, ['paused', 'backing off']),
+            'bg-slate-200 text-slate-600' => $polling === 'off',
+        ])>Live: {{ $polling }}</span>
+        @if ($lastPoll) <span>checked {{ $lastPoll->diffForHumans(short: true) }}</span> · @endif
+        <span>AI today: <span class="font-medium {{ $spentToday >= $cap ? 'text-red-600' : 'text-slate-700' }}">${{ number_format($spentToday, 3) }}</span> of ${{ number_format($cap, 2) }}</span>
         @if ($spentToday >= $cap) · <span class="font-medium text-red-600">cap reached, drafting paused</span> @endif
     </p>
 
@@ -24,7 +30,7 @@
 
     <label class="flex items-center gap-2 text-xs text-slate-500">
         <input type="checkbox" wire:model.live="showLow" class="rounded border-slate-300 text-teal-600">
-        Show low-fit projects (score under {{ $medium }})
+        Show low-fit and filtered projects (score under {{ $medium }}, kept 24h)
     </label>
 
     @forelse ($projects as $project)
@@ -45,7 +51,9 @@
                         @if ($project->category)
                             <span class="font-medium text-slate-700">{{ config('bidradar.categories.'.$project->category, 'Other') }}</span> ·
                         @endif
-                        <span>{{ $project->created_at->diffForHumans(short: true) }}</span>
+                        <span>{{ ($project->posted_at ?? $project->created_at)->diffForHumans(short: true) }}</span>
+                        @if ($project->source === 'paste') <span class="text-slate-400">pasted</span> @endif
+                        @if ($project->filter_reason) <span class="text-slate-400">filtered: {{ $project->filter_reason }}</span> @endif
                         <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">{{ \App\Models\Project::STATUSES[$project->status] ?? $project->status }}</span>
                         @if ($project->isBusy())
                             <span class="animate-pulse text-teal-700">{{ $project->ai_state }}…</span>

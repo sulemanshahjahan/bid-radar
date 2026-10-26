@@ -120,11 +120,35 @@
                 <input type="checkbox" wire:model="form.polling_enabled" class="rounded border-slate-300 text-teal-600" @disabled(! $pollingAllowed)>
                 Poll Freelancer for new projects
             </label>
+            <label class="flex items-center gap-2 text-sm">
+                <input type="checkbox" wire:model="form.paused" class="rounded border-slate-300 text-teal-600">
+                Paused (same as Telegram /pause)
+            </label>
+            <label class="block max-w-40">
+                <span class="label">Poll every (minutes)</span>
+                <input type="number" min="2" max="60" wire:model="form.poll_interval_minutes" class="field">
+                @error('form.poll_interval_minutes') <span class="text-xs text-red-600">{{ $message }}</span> @enderror
+            </label>
             @unless ($pollingAllowed)
                 <p class="rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-600">
                     Locked off. Polling needs written permission from Freelancer, then <code>FREELANCER_POLLING_ENABLED=true</code> in <code>.env</code>.
                 </p>
             @endunless
+
+            <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-lg bg-slate-50 px-3 py-2 text-xs">
+                <dt class="text-slate-500">Freelancer token</dt><dd>{{ $tokenSet ? 'set' : 'missing' }}</dd>
+                <dt class="text-slate-500">Last poll</dt><dd>{{ $lastPoll ? $lastPoll->diffForHumans() : 'never' }}</dd>
+                @if ($backoffUntil)
+                    <dt class="text-slate-500">Backing off</dt><dd class="text-amber-700">until {{ date('H:i', $backoffUntil) }} (after an API error)</dd>
+                @endif
+                <dt class="text-slate-500">Skill IDs</dt>
+                <dd>
+                    @if ($skillIds === null) not looked up yet (first poll or <code>php artisan bidradar:skills</code>)
+                    @else {{ collect($skillIds)->map(fn ($id, $n) => "$n $id")->implode(', ') ?: 'none matched' }} @endif
+                    @if ($unmatchedSkills) <span class="block text-red-600">Not found on Freelancer: {{ implode(', ', $unmatchedSkills) }}</span> @endif
+                </dd>
+                <dt class="text-slate-500">Telegram</dt><dd>{{ $telegramReady ? 'configured' : 'missing bot token or chat ID' }}</dd>
+            </dl>
         </section>
 
         <div class="sticky bottom-4 z-10">

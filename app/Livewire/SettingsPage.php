@@ -4,8 +4,12 @@ namespace App\Livewire;
 
 use App\Models\PastProject;
 use App\Services\CostTracker;
+use App\Services\Freelancer\FreelancerClient;
+use App\Services\Freelancer\Poller;
 use App\Services\Scoring\Scorer;
 use App\Services\Settings;
+use App\Services\Telegram\Telegram;
+use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
@@ -19,10 +23,10 @@ class SettingsPage extends Component
         'min_budget_usd', 'max_bid_count', 'new_build_max_bid_count', 'max_age_hours',
         'threshold_high', 'threshold_medium', 'daily_spend_cap_usd', 'weekly_bid_cap',
         'hourly_rate_usd', 'floor_price_usd', 'avg_bid_factor_low', 'avg_bid_factor_high',
-        'word_min', 'word_max',
+        'word_min', 'word_max', 'poll_interval_minutes',
     ];
 
-    private const BOOLEANS = ['quiet_alerts', 'polling_enabled'];
+    private const BOOLEANS = ['quiet_alerts', 'polling_enabled', 'paused'];
 
     private const TEXTS = [
         'scoring_model', 'scoring_effort', 'drafting_model', 'drafting_effort',
@@ -51,6 +55,7 @@ class SettingsPage extends Component
             'form.max_bid_count' => 'required|integer|min:1',
             'form.new_build_max_bid_count' => 'required|integer|min:1',
             'form.max_age_hours' => 'required|integer|min:1|max:24',
+            'form.poll_interval_minutes' => 'required|integer|min:2|max:60',
             'form.threshold_high' => 'required|integer|between:1,100|gt:form.threshold_medium',
             'form.threshold_medium' => 'required|integer|between:0,99',
             'form.daily_spend_cap_usd' => 'required|numeric|min:0|max:100',
@@ -134,14 +139,22 @@ class SettingsPage extends Component
         $this->resetValidation();
     }
 
-    public function render(CostTracker $costs)
+    public function render(CostTracker $costs, Poller $poller, FreelancerClient $freelancer, Telegram $telegram)
     {
+        $lastPoll = Cache::get(Poller::LAST_SUCCESS);
+
         return view('livewire.settings-page', [
             'pastProjects' => PastProject::query()->orderBy('id')->get(),
             'models' => array_keys(config('bidradar.prices')),
             'pollingAllowed' => config('bidradar.freelancer.polling_enabled') === true,
             'spentToday' => $costs->spentToday(),
             'spentMonth' => $costs->spentThisMonth(),
+            'skillIds' => $poller->cachedSkillIds(),
+            'unmatchedSkills' => $poller->unmatchedSkills(),
+            'lastPoll' => $lastPoll ? now()->setTimestamp($lastPoll) : null,
+            'backoffUntil' => $freelancer->backoffUntil(),
+            'tokenSet' => (bool) config('bidradar.freelancer.oauth_token'),
+            'telegramReady' => $telegram->configured(),
         ]);
     }
 }
