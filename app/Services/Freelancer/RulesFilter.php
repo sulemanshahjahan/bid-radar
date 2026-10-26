@@ -29,7 +29,11 @@ class RulesFilter
             return "Excluded keyword: {$word}";
         }
 
-        if (($d['client']['payment_verified'] ?? false) !== true) {
+        $verified = $d['client']['payment_verified'] ?? null;
+        if ($verified === null) {
+            return 'Client payment status unknown';
+        }
+        if ($verified !== true) {
             return 'Client payment not verified';
         }
 

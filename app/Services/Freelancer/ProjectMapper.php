@@ -16,14 +16,25 @@ class ProjectMapper
     public static function map(array $p, ?array $owner): array
     {
         $upgrades = array_keys(array_filter((array) ($p['upgrades'] ?? []), fn ($v) => $v === true));
-        $history = data_get($owner, 'employer_reputation.entire_history', []);
+
+        // Live search results hide owner_id and return no `users`; client details come
+        // inline in project.owner_info (status, reputation, country). The users-map shape
+        // from the docs is still supported in case a response includes it.
+        $info = is_array($p['owner_info'] ?? null) ? $p['owner_info'] : [];
+        $history = data_get($owner, 'employer_reputation.entire_history')
+            ?? data_get($info, 'reputation.entire_history')
+            ?? data_get($info, 'employer_reputation.entire_history')
+            ?? (is_array($info['reputation'] ?? null) ? $info['reputation'] : []);
+        $country = data_get($owner, 'location.country.name') ?? data_get($owner, 'location.country.code')
+            ?? (is_array($info['country'] ?? null) ? ($info['country']['name'] ?? $info['country']['code'] ?? null) : ($info['country'] ?? null));
+        $verified = data_get($owner, 'status.payment_verified') ?? data_get($info, 'status.payment_verified');
 
         $client = array_filter([
-            'payment_verified' => data_get($owner, 'status.payment_verified'),
-            'rating' => isset($history['overall']) ? round((float) $history['overall'], 1) : null,
-            'reviews' => $history['reviews'] ?? null,
-            'projects' => $history['all'] ?? null, // unconfirmed meaning; best available "projects" count
-            'country' => data_get($owner, 'location.country.name') ?? data_get($owner, 'location.country.code'),
+            'payment_verified' => is_bool($verified) ? $verified : null,
+            'rating' => is_numeric($history['overall'] ?? null) ? round((float) $history['overall'], 1) : null,
+            'reviews' => is_numeric($history['reviews'] ?? null) ? (int) $history['reviews'] : null,
+            'projects' => is_numeric($history['all'] ?? null) ? (int) $history['all'] : null, // best available "projects" count
+            'country' => is_string($country) && $country !== '' ? $country : null,
         ], fn ($v) => $v !== null);
 
         $seo = (string) ($p['seo_url'] ?? '');
