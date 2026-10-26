@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Project;
+use App\Services\DraftGate;
 use App\Services\Scoring\Scorer;
 use App\Services\Settings;
 use App\Services\Telegram\Telegram;
@@ -20,7 +21,7 @@ class ScoreProject implements ShouldQueue
 
     public function __construct(public readonly int $projectId) {}
 
-    public function handle(Scorer $scorer, Settings $settings, Telegram $telegram): void
+    public function handle(Scorer $scorer, Settings $settings, Telegram $telegram, DraftGate $gate): void
     {
         $project = Project::query()->find($this->projectId);
         if ($project === null || $project->purged_at !== null) {
@@ -47,6 +48,12 @@ class ScoreProject implements ShouldQueue
         $high = $result['fit_score'] >= $settings->int('threshold_high');
         $medium = $result['fit_score'] >= $settings->int('threshold_medium');
         $live = $project->source === 'freelancer';
+
+        // Filtered projects (rules, new build with too many bids, low score) are never drafted
+        // or alerted automatically, pasted or live. The owner can still draft anyway.
+        if ($gate->blockers($project->fresh()) !== []) {
+            return;
+        }
 
         // High fit is drafted automatically (then alerted); paste mode can ask to always draft.
         if ($project->auto_draft || $high) {

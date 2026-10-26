@@ -92,7 +92,7 @@
 
     <label class="flex items-center gap-2 text-sm">
         <input type="checkbox" wire:model="alwaysDraft" class="rounded border-slate-300 text-teal-600">
-        Draft a proposal even if the score is low
+        Draft automatically if it passes the filters (score, bids, new build)
     </label>
 
     <button type="submit" class="btn-primary w-full py-3 text-base" wire:loading.attr="disabled">

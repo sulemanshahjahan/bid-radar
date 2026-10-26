@@ -10,6 +10,7 @@ use App\Services\Scoring\Scorer;
 use App\Services\Settings;
 use App\Services\Telegram\Telegram;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -63,6 +64,13 @@ class SettingsPage extends Component
         // Only fields the user changed are saved. A field missing from the form state keeps its saved value.
         $changed = [];
         foreach ($this->original as $key => $old) {
+            // A checkbox must hold a real true/false. Anything else (e.g. "on" or "false" from a script)
+            // is ignored, because PHP's (bool) would turn it into true.
+            if (in_array($key, self::BOOLEANS, true) && array_key_exists($key, $this->form) && self::toBool($this->form[$key]) === null) {
+                $this->form[$key] = $old;
+
+                continue;
+            }
             if (array_key_exists($key, $this->form) && $this->normalise($key, $this->form[$key]) !== $this->normalise($key, $old)) {
                 $changed[$key] = $this->form[$key];
             }
@@ -113,7 +121,7 @@ class SettingsPage extends Component
             } elseif (in_array($key, self::NUMBERS, true)) {
                 $values[$key] = $this->toNumber($value);
             } elseif (in_array($key, self::BOOLEANS, true)) {
-                $values[$key] = (bool) $value;
+                $values[$key] = self::toBool($value);
             } elseif (in_array($key, self::TEXTS, true)) {
                 $values[$key] = trim((string) $value);
             }
@@ -127,6 +135,14 @@ class SettingsPage extends Component
 
         if ($values !== []) {
             $settings->set($values);
+        }
+        if (array_key_exists('polling_enabled', $values)) {
+            Log::warning('polling_enabled changed on the Settings page', [
+                'from' => (bool) $this->original['polling_enabled'],
+                'to' => $values['polling_enabled'],
+                'user_id' => auth()->id(),
+                'ip' => request()->ip(),
+            ]);
         }
         $this->original = $this->form;
         $this->dispatch('copied', 'Settings saved');
@@ -142,10 +158,20 @@ class SettingsPage extends Component
             return is_numeric($value) ? (float) $value : trim((string) $value);
         }
         if (in_array($key, self::BOOLEANS, true)) {
-            return (bool) $value;
+            return self::toBool($value);
         }
 
         return trim((string) $value);
+    }
+
+    /** true/false for real booleans (and 1/0, "1"/"0", "true"/"false"); null for anything else. */
+    private static function toBool(mixed $value): ?bool
+    {
+        return match (true) {
+            $value === true, $value === 1, $value === '1', $value === 'true' => true,
+            $value === false, $value === 0, $value === '0', $value === 'false', $value === null => false,
+            default => null,
+        };
     }
 
     private function isBlank(mixed $value): bool

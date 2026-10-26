@@ -12,8 +12,11 @@ class RulesFilter
 {
     public function __construct(private readonly Settings $settings) {}
 
-    /** @param array<string, mixed> $mapped Output of ProjectMapper::map() */
-    public function reject(array $mapped, ?int $now = null): ?string
+    /**
+     * @param  array<string, mixed>  $mapped  Output of ProjectMapper::map() (or the same shape built from a pasted brief)
+     * @param  bool  $requireSkill  Pasted projects without skills entered skip the target-skill check.
+     */
+    public function reject(array $mapped, ?int $now = null, bool $requireSkill = true): ?string
     {
         $d = $mapped['details'];
         $text = $mapped['title']."\n".$mapped['description'];
@@ -21,7 +24,7 @@ class RulesFilter
 
         $targets = array_map('mb_strtolower', $this->settings->list('target_skills'));
         $skills = array_map('mb_strtolower', $d['skills']);
-        if ($targets !== [] && array_intersect($skills, $targets) === []) {
+        if ($targets !== [] && ($requireSkill || $skills !== []) && array_intersect($skills, $targets) === []) {
             return 'No target skill';
         }
 
