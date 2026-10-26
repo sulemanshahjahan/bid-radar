@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Project;
 use App\Services\Freelancer\RulesFilter;
+use Illuminate\Support\Carbon;
 
 /**
  * Turns the AI's base fit score into the score BidRadar acts on.
@@ -15,23 +16,29 @@ class ScoreAdjuster
 {
     public const PRICE_SHOPPER_WORDS = ['cheap', 'cheapest', 'lowest price', 'low budget'];
 
+    /** Popular fix jobs collect dozens of bids in the first minutes; that is not "late". */
+    public const FRESH_MINUTES = 10;
+
     public function __construct(private readonly Settings $settings) {}
 
     /**
      * @param  array<string, mixed>  $scoring  normalized scoring reply (base fit_score inside)
      * @param  array<string, mixed>  $details  project details (bid_count, client, budget...)
      * @param  string  $text  title + description, for price-shopper wording
+     * @param  Carbon|null  $postedAt  live projects only: no bid penalty in the first FRESH_MINUTES
      * @return array{base: int, adjustments: list<array{label: string, points: int}>, score: int}
      */
-    public function adjust(array $scoring, array $details, string $text = ''): array
+    public function adjust(array $scoring, array $details, string $text = '', ?Carbon $postedAt = null): array
     {
         $base = (int) ($scoring['fit_score'] ?? 0);
         $adjustments = [];
 
         $bids = (int) ($details['bid_count'] ?? 0);
-        if ($bids >= 31) {
+        // Scores are re-adjusted on every poll, so the penalty applies once a fresh project ages.
+        $fresh = $postedAt !== null && $postedAt->diffInMinutes(now(), true) < self::FRESH_MINUTES;
+        if (! $fresh && $bids >= 31) {
             $adjustments[] = ['label' => "{$bids} bids (31+)", 'points' => -25];
-        } elseif ($bids >= 16) {
+        } elseif (! $fresh && $bids >= 16) {
             $adjustments[] = ['label' => "{$bids} bids (16-30)", 'points' => -10];
         }
 
@@ -44,6 +51,18 @@ class ScoreAdjuster
         return ['base' => $base, 'adjustments' => $adjustments, 'score' => $score];
     }
 
+    /**
+     * adjust() with the project's own details, text and (live projects only) posting time.
+     *
+     * @param  array<string, mixed>  $scoring
+     * @return array{base: int, adjustments: list<array{label: string, points: int}>, score: int}
+     */
+    public function forProject(array $scoring, Project $project): array
+    {
+        return $this->adjust($scoring, $project->details ?? [], $project->title."\n".$project->description,
+            $project->source === 'freelancer' ? $project->posted_at : null);
+    }
+
     /** Recompute and save the adjusted score for a scored project. No other side effects. */
     public function apply(Project $project): void
     {
@@ -51,7 +70,7 @@ class ScoreAdjuster
             return;
         }
 
-        $result = $this->adjust($project->scoring, $project->details ?? [], $project->title."\n".$project->description);
+        $result = $this->forProject($project->scoring, $project);
         $project->forceFill([
             'fit_score' => $result['score'],
             'scoring' => array_merge($project->scoring, ['adjustments' => $result['adjustments']]),
@@ -88,7 +107,7 @@ class ScoreAdjuster
         }
 
         if (($scoring['large_vague_or_off_niche'] ?? null) === true) {
-            $out[] = ['label' => 'large, vague or off-niche', 'points' => -20];
+            $out[] = ['label' => 'large or off-niche', 'points' => -20];
         }
 
         return $out;

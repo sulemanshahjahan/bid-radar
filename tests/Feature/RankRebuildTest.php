@@ -60,7 +60,7 @@ class RankRebuildTest extends TestCase
         $this->assertContains('budget top under minimum ($20) -20', $this->labels($this->adjust([], ['budget_min' => 10, 'budget_max' => 20])));
         $this->assertSame(1, count(array_filter($this->labels($this->adjust([], ['budget_max' => 20, 'budget_min' => 10], 'cheap')), fn ($l) => str_ends_with($l, '-20'))), 'One -20 for price signals, not two');
 
-        $this->assertContains('large, vague or off-niche -20', $this->labels($this->adjust(['large_vague_or_off_niche' => true], [])));
+        $this->assertContains('large or off-niche -20', $this->labels($this->adjust(['large_vague_or_off_niche' => true], [])));
     }
 
     public function test_adjustments_combine_with_the_bid_count_band(): void

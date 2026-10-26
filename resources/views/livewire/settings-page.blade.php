@@ -125,7 +125,7 @@
             <label class="flex items-start gap-2 text-sm">
                 <input type="checkbox" wire:model="form.rank_rebuild" class="mt-0.5 rounded border-slate-300 text-teal-600">
                 <span>Rank rebuild mode
-                    <span class="block text-xs text-slate-500">+10 quick fixes (1-2 days), +10 clients rated 4.8+ with 3+ projects, -15 unverified payment, -20 price shoppers or budget under minimum, -20 large, vague or off-niche work.</span>
+                    <span class="block text-xs text-slate-500">+10 quick fixes (1-2 days), +10 clients rated 4.8+ with 3+ projects, -15 unverified payment, -20 price shoppers or budget under minimum, -20 large or off-niche work.</span>
                 </span>
             </label>
             <label class="flex items-center gap-2 text-sm {{ $pollingAllowed ? '' : 'text-slate-400' }}">

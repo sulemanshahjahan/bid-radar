@@ -91,10 +91,10 @@ return [
         'target_skills' => [
             'WordPress', 'WooCommerce', 'Shopify', 'PHP', 'MySQL', 'Plugin',
             'Payment Gateway Integration', 'Shopping Cart Integration', 'CMS',
-            'Website Optimization', 'Website Management', 'Web Security',
+            'Website Optimization', 'Website Management', 'Web Security', 'SEO',
         ],
         'exclude_keywords' => [
-            'SEO', 'backlinks', 'Google Business Profile', 'GMB', 'local SEO',
+            'backlinks', 'Google Business Profile', 'GMB', 'local SEO', // basic SEO is offered
             'AI', 'ChatGPT', 'OpenAI', 'chatbot', 'GPT', 'LLM', 'automation', 'Make.com', 'n8n', 'Zapier',
             'adult', 'porn', 'gambling', 'casino', 'betting', 'crypto exchange', 'money transfer',
             'clone of', 'fake reviews', 'captcha bypass',
