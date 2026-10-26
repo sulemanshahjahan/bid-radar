@@ -35,7 +35,7 @@ class ScoreAdjuster
 
         $bids = (int) ($details['bid_count'] ?? 0);
         // Scores are re-adjusted on every poll, so the penalty applies once a fresh project ages.
-        $fresh = $postedAt !== null && $postedAt->diffInMinutes(now(), true) < self::FRESH_MINUTES;
+        $fresh = self::isFresh($postedAt);
         if (! $fresh && $bids >= 31) {
             $adjustments[] = ['label' => "{$bids} bids (31+)", 'points' => -25];
         } elseif (! $fresh && $bids >= 16) {
@@ -49,6 +49,12 @@ class ScoreAdjuster
         $score = max(0, min(100, $base + array_sum(array_column($adjustments, 'points'))));
 
         return ['base' => $base, 'adjustments' => $adjustments, 'score' => $score];
+    }
+
+    /** Posted less than FRESH_MINUTES ago (live projects pass posted_at, pasted ones null). */
+    public static function isFresh(?Carbon $postedAt): bool
+    {
+        return $postedAt !== null && $postedAt->diffInMinutes(now(), true) < self::FRESH_MINUTES;
     }
 
     /**

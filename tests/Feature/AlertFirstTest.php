@@ -61,6 +61,28 @@ class AlertFirstTest extends TestCase
         $this->assertTrue($this->sent[1]['silent'] && $this->sent[2]['silent']);
     }
 
+    public function test_a_fresh_high_fit_project_alerts_with_sound_even_with_many_bids(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-26 22:20:04'));
+        $fresh = $this->liveHighFit(['bid_count' => 48]);
+        $fresh->forceFill(['posted_at' => now()->subSeconds(47)])->save();
+        $this->claude->reply($this->scoringReply(['fit_score' => 82]))->reply($this->draftReply(), 'claude-sonnet-5-5');
+
+        ScoreProject::dispatchSync($fresh->id);
+
+        $this->assertFalse($this->sent[0]['silent'], '48 bids 47s after posting: early, so it rings');
+
+        $this->sent = [];
+        $old = $this->liveHighFit(['bid_count' => 48]);
+        $old->forceFill(['posted_at' => now()->subMinutes(30)])->save();
+        $this->claude->reply($this->scoringReply(['fit_score' => 100]))->reply($this->draftReply(), 'claude-sonnet-5-5');
+
+        ScoreProject::dispatchSync($old->id);
+
+        $this->assertSame(75, $old->fresh()->fit_score, '100 - 25 for 31+ bids');
+        $this->assertTrue($this->sent[0]['silent'], 'Older and crowded: silent alert');
+    }
+
     public function test_a_failed_draft_sends_a_short_no_draft_follow_up(): void
     {
         $project = $this->liveHighFit();
