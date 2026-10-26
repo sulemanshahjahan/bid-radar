@@ -37,7 +37,7 @@ class Scorer
                 ['text' => $this->instructions(), 'cache' => true],
             ],
             userContent: "Score this project.\n\n".ProjectBrief::render($project),
-            schema: self::schema(),
+            schema: self::schema((bool) $this->settings->get('rank_rebuild')),
             effort: $this->settings->get('scoring_effort', 'low'),
             maxTokens: 4000,
         );
@@ -86,13 +86,16 @@ class Scorer
             'brief_summary' => mb_substr(trim((string) ($data['brief_summary'] ?? '')), 0, 400),
             'estimated_hours' => is_numeric($data['estimated_hours'] ?? null) && (float) $data['estimated_hours'] > 0
                 ? min(2000, (int) ceil((float) $data['estimated_hours'])) : null,
+            // Rank rebuild mode flags (only asked for when the mode is on).
+            'quick_fix' => is_bool($data['quick_fix'] ?? null) ? $data['quick_fix'] : null,
+            'large_vague_or_off_niche' => is_bool($data['large_vague_or_off_niche'] ?? null) ? $data['large_vague_or_off_niche'] : null,
         ];
     }
 
     /** @return array<string, mixed> */
-    public static function schema(): array
+    public static function schema(bool $rankRebuild = false): array
     {
-        return [
+        $schema = [
             'type' => 'object',
             'properties' => [
                 'fit_score' => ['type' => 'integer', 'description' => '0-100'],
@@ -108,6 +111,15 @@ class Scorer
             'required' => ['fit_score', 'category', 'reason', 'client_test_phrase', 'client_questions', 'client_requirements', 'red_flags', 'brief_summary', 'estimated_hours'],
             'additionalProperties' => false,
         ];
+
+        if ($rankRebuild) {
+            $schema['properties']['quick_fix'] = ['type' => 'boolean'];
+            $schema['properties']['large_vague_or_off_niche'] = ['type' => 'boolean'];
+            $schema['required'][] = 'quick_fix';
+            $schema['required'][] = 'large_vague_or_off_niche';
+        }
+
+        return $schema;
     }
 
     private function instructions(): string
@@ -140,6 +152,11 @@ class Scorer
               for (build, testing, fixes, handover). Count every feature listed: roles, reports, audit logs,
               integrations and so on. Base it on the scope, not on the client's budget.
             TXT,
+            $s->get('rank_rebuild') ? <<<'TXT'
+            Also answer two yes/no flags:
+            - quick_fix: true if this is a small, well-defined fix one skilled developer can deliver in 1-2 days.
+            - large_vague_or_off_niche: true if the job is large, vaguely specified, or outside the services offered.
+            TXT : null,
             ProjectBrief::UNTRUSTED_RULES,
         ]));
     }
