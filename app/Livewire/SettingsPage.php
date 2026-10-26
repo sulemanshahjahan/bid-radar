@@ -25,7 +25,7 @@ class SettingsPage extends Component
         'min_budget_usd', 'max_bid_count', 'new_build_max_bid_count', 'max_age_hours',
         'threshold_high', 'threshold_medium', 'daily_spend_cap_usd', 'weekly_bid_cap',
         'hourly_rate_usd', 'floor_price_usd', 'avg_bid_factor_low', 'avg_bid_factor_high',
-        'word_min', 'word_max', 'poll_interval_minutes',
+        'word_min', 'word_max', 'poll_interval_minutes', 'sponsor_min_budget_usd',
     ];
 
     private const BOOLEANS = ['quiet_alerts', 'polling_enabled', 'paused', 'rank_rebuild'];
@@ -96,6 +96,7 @@ class SettingsPage extends Component
             'form.threshold_medium' => 'required|integer|between:0,99',
             'form.daily_spend_cap_usd' => 'required|numeric|min:0|max:100',
             'form.weekly_bid_cap' => 'required|integer|min:1|max:500',
+            'form.sponsor_min_budget_usd' => 'required|numeric|min:0',
             'form.hourly_rate_usd' => 'required|numeric|gt:0',
             'form.floor_price_usd' => 'required|numeric|min:0',
             'form.avg_bid_factor_low' => 'required|numeric|between:0.5,1.5',

@@ -54,6 +54,7 @@
                         <span>{{ ($project->posted_at ?? $project->created_at)->diffForHumans(short: true) }}</span>
                         @if ($project->source === 'paste') <span class="text-slate-400">pasted</span> @endif
                         @if ($project->filter_reason) <span class="text-slate-400">filtered: {{ $project->filter_reason }}</span> @endif
+                        @if ($sponsor->applies($project)) <span class="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-800">Worth sponsoring</span> @endif
                         <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">{{ \App\Models\Project::STATUSES[$project->status] ?? $project->status }}</span>
                         @if ($project->isBusy())
                             <span class="animate-pulse text-teal-700">{{ $project->ai_state }}…</span>
