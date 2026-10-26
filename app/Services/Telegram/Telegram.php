@@ -6,6 +6,7 @@ use App\Models\Draft;
 use App\Models\Project;
 use App\Services\BidTracker;
 use App\Services\CostTracker;
+use App\Services\ScoreAdjuster;
 use App\Services\Settings;
 use App\Services\SponsorBadge;
 use Illuminate\Support\Facades\Http;
@@ -75,11 +76,13 @@ class Telegram
         $this->send(self::bidText($draft), [], true, 'alert_copy');
     }
 
+    /** High fit and either under 10 bids or found in its first minutes (busy fix jobs fill fast). */
     public static function isTopProject(Project $project): bool
     {
         return $project->fit_score !== null
             && $project->fit_score >= app(Settings::class)->int('threshold_high')
-            && (int) $project->detail('bid_count', 0) < 10;
+            && ((int) $project->detail('bid_count', 0) < 10
+                || ($project->source === 'freelancer' && ScoreAdjuster::isFresh($project->posted_at)));
     }
 
     /** Bid amount and delivery days, each in a tap-to-copy code span. */
