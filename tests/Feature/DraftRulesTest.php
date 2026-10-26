@@ -222,7 +222,8 @@ class DraftRulesTest extends TestCase
         app(Drafter::class)->draft($project);
 
         $rules = $this->claude->requests[0]->system[0]['text'];
-        $this->assertStringContainsString('Never name a framework, CMS, programming language', $rules);
+        $this->assertStringContainsString('Only propose a framework, CMS, programming language', $rules);
+        $this->assertStringContainsString('Never offer extras that are not in the fact bank', $rules);
         $this->assertStringContainsString("Never write anything that puts down the freelancer's experience", $rules);
     }
 
@@ -262,6 +263,58 @@ class DraftRulesTest extends TestCase
         }
         $this->assertNull(Setting::query()->where('key', 'polling_enabled')->value('value'));
         $this->assertFalse(app(Settings::class)->get('polling_enabled'));
+    }
+
+    // --- Follow-up from re-running #12 -----------------------------------------
+
+    public function test_a_stack_the_client_did_not_ask_for_is_flagged_even_if_it_is_in_the_fact_bank(): void
+    {
+        $brief = 'Skills: PHP, MySQL'."\n".self::BRIEF;
+
+        $this->assertSame(['WordPress'], PostChecker::proposedStack(
+            'I would build this as a self-hosted WordPress plugin with its own database tables.', $brief,
+        ));
+        // Past experience from the fact bank is fine; so is a stack the client named.
+        $this->assertSame([], PostChecker::proposedStack("I've fixed WooCommerce checkouts for other stores.", $brief));
+        $this->assertSame([], PostChecker::proposedStack('I would build it in PHP with a MySQL database.', $brief));
+    }
+
+    public function test_spelled_out_amounts_and_invented_extras_are_caught(): void
+    {
+        $line = 'Two weeks of post-launch bug fixing is included.';
+
+        $this->assertSame(['two weeks'], PostChecker::unknownSpelledAmounts($line, self::BRIEF, ['bid_amount' => 300]));
+        $this->assertNotNull(PostChecker::inventedExtra($line, '<fact_bank>Positioning: I fix WooCommerce stores.</fact_bank>'));
+        $this->assertNotNull(PostChecker::inventedExtra('Free support for a month after launch.', '<fact_bank></fact_bank>'));
+
+        // Allowed: offered in the fact bank, normal scope wording, words that are not amounts.
+        $this->assertNull(PostChecker::inventedExtra($line, '<fact_bank>Every project includes 2 weeks of bug fixing after launch.</fact_bank>'));
+        $this->assertNull(PostChecker::inventedExtra('The system includes support for multiple hotels per event.', '<fact_bank></fact_bank>'));
+        $this->assertSame([], PostChecker::unknownSpelledAmounts('First I map the roles, then I ask one question.', self::BRIEF, []));
+        $this->assertSame([], PostChecker::unknownSpelledAmounts('Done in two days.', 'Fix: 1-2 days', []));
+    }
+
+    public function test_the_project_12_draft_now_fails_and_is_retried(): void
+    {
+        app(Settings::class)->set(['services_offered' => 'WordPress and WooCommerce fixes and integrations']);
+        $project = $this->makeProject(
+            ['title' => 'Conference Accommodation Management System', 'description' => self::BRIEF],
+            ['skills' => ['PHP', 'MySQL'], 'bid_count' => 184, 'bid_avg' => 282, 'budget_min' => 250, 'budget_max' => 300],
+            $this->scoringReply(['category' => 'new_build', 'fit_score' => 18, 'estimated_hours' => 220]),
+        );
+        $bad = $this->project12Proposal().' I would build this as a self-hosted WordPress plugin. Two weeks of post-launch bug fixing is included.';
+        $this->claude
+            ->reply($this->draftReply(['proposal_text' => $bad]), 'claude-sonnet-5-5')
+            ->reply($this->draftReply(['proposal_text' => $this->project12Proposal()]), 'claude-sonnet-5-5');
+
+        $draft = app(Drafter::class)->draft($project);
+
+        $retry = $this->claude->requests[1]->userContent;
+        $this->assertStringContainsString('Proposes a stack the client did not ask for: WordPress', $retry);
+        $this->assertStringContainsString('Offers an extra that is not in the fact bank', $retry);
+        $this->assertStringContainsString('two weeks', $retry);
+        $this->assertNull($draft->check_failures);
+        $this->assertSame(300.0, (float) $draft->bid_amount);
     }
 
     private function project12Proposal(): string
