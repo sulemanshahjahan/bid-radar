@@ -4,6 +4,7 @@ namespace App\Livewire;
 
 use App\Jobs\ScoreProject;
 use App\Models\Project;
+use App\Services\Freelancer\RulesFilter;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Validate;
 use Livewire\Component;
@@ -66,33 +67,45 @@ class PasteProject extends Component
         }
     }
 
-    public function save()
+    public function save(RulesFilter $rules)
     {
         $this->validate();
 
         $title = trim($this->title) !== '' ? trim($this->title) : mb_substr(strtok(trim($this->description), "\n"), 0, 120);
         $num = fn ($v) => $v === '' || $v === null ? null : (float) $v;
 
+        $details = [
+            'type' => $this->type,
+            'budget_min' => $num($this->budgetMin),
+            'budget_max' => $num($this->budgetMax),
+            'currency' => strtoupper($this->currency),
+            'exchange_rate' => (float) $this->exchangeRate,
+            'bid_count' => $this->bidCount === '' ? null : (int) $this->bidCount,
+            'bid_avg' => $num($this->bidAvg),
+            'skills' => array_values(array_filter(array_map('trim', explode(',', $this->skills)))),
+            'client' => array_filter([
+                'payment_verified' => $this->paymentVerified,
+                'rating' => $num($this->clientRating),
+                'country' => trim($this->clientCountry) ?: null,
+            ], fn ($v) => $v !== null),
+        ];
+
+        // Same project filters as live projects. A filtered paste is still saved, scored and
+        // viewable, but it is not drafted unless I click "Draft anyway".
+        $reason = $rules->reject([
+            'title' => $title,
+            'description' => trim($this->description),
+            'posted_at' => now()->getTimestamp(),
+            'details' => $details,
+        ], requireSkill: $details['skills'] !== []);
+
         $project = Project::query()->create([
             'source' => 'paste',
             'url' => trim($this->url) ?: null,
             'title' => $title,
             'description' => trim($this->description),
-            'details' => [
-                'type' => $this->type,
-                'budget_min' => $num($this->budgetMin),
-                'budget_max' => $num($this->budgetMax),
-                'currency' => strtoupper($this->currency),
-                'exchange_rate' => (float) $this->exchangeRate,
-                'bid_count' => $this->bidCount === '' ? null : (int) $this->bidCount,
-                'bid_avg' => $num($this->bidAvg),
-                'skills' => array_values(array_filter(array_map('trim', explode(',', $this->skills)))),
-                'client' => array_filter([
-                    'payment_verified' => $this->paymentVerified,
-                    'rating' => $num($this->clientRating),
-                    'country' => trim($this->clientCountry) ?: null,
-                ], fn ($v) => $v !== null),
-            ],
+            'details' => $details,
+            'filter_reason' => $reason,
             'auto_draft' => $this->alwaysDraft,
             'ai_state' => 'queued',
             'posted_at' => now(),

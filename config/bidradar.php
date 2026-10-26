@@ -154,6 +154,10 @@ return [
         'style_notes' => '',
     ],
 
+    // Fixed-price scope check: warn (and stop matching the average bid) when the
+    // estimated hours x hourly rate is more than this many times the price.
+    'scope_warning_factor' => 2,
+
     'categories' => [
         'fix' => 'Fix',
         'security' => 'Security',

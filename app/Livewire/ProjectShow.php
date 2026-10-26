@@ -7,6 +7,7 @@ use App\Models\Draft;
 use App\Models\Project;
 use App\Models\WinningExample;
 use App\Services\CostTracker;
+use App\Services\DraftGate;
 use App\Services\Settings;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
@@ -49,11 +50,15 @@ class ProjectShow extends Component
         $draft->update(['edited_text' => $text === '' || $text === $draft->proposal_text ? null : $text]);
     }
 
-    public function draft(CostTracker $costs): void
+    /** @param bool $anyway Set by the "Draft anyway" button on a filtered project. */
+    public function draft(CostTracker $costs, DraftGate $gate, bool $anyway = false): void
     {
         $project = $this->project();
         if ($project->isBusy() || $project->latestDraft !== null) {
             return;
+        }
+        if (! $anyway && $gate->blockers($project) !== []) {
+            return; // filtered: only "Draft anyway" may spend AI on it
         }
         if ($this->capBlocks($costs)) {
             return;
@@ -109,7 +114,7 @@ class ProjectShow extends Component
         }
     }
 
-    public function render(Settings $settings, CostTracker $costs)
+    public function render(Settings $settings, CostTracker $costs, DraftGate $gate)
     {
         $project = $this->project();
 
@@ -124,6 +129,7 @@ class ProjectShow extends Component
             'high' => $settings->int('threshold_high'),
             'medium' => $settings->int('threshold_medium'),
             'capReached' => $costs->capReached(),
+            'filtered' => $gate->message($project),
             'versions' => $project->drafts()->count(),
         ])->title($project->displayTitle());
     }

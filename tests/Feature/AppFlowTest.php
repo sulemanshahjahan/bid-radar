@@ -78,6 +78,7 @@ class AppFlowTest extends TestCase
         Livewire::test(PasteProject::class)
             ->set('title', 'WooCommerce checkout failing after update')
             ->set('description', 'After updating WooCommerce to 9.3 the checkout page spins forever and no orders come through. Stripe gateway.')
+            ->set('skills', 'WooCommerce, PHP')
             ->set('budgetMin', 150)->set('budgetMax', 250)
             ->set('bidCount', 3)->set('bidAvg', 180)
             ->call('save')

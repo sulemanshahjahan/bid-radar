@@ -11,6 +11,9 @@ use App\Services\Settings;
  * - No bids yet: middle of the client's budget range.
  * - Never below the client's minimum budget, never below my floor.
  * - Hourly: my hourly rate, raised to the client's minimum if needed.
+ * - Scope check (fixed): if the estimated hours x my hourly rate is more than
+ *   bidradar.scope_warning_factor (2x) the price above, bid the scope price (capped at
+ *   the client's budget maximum) and return a "budget too low for scope" warning.
  */
 class PricingCalculator
 {
@@ -18,9 +21,10 @@ class PricingCalculator
 
     /**
      * @param  array<string, mixed>  $details  Project details (type, budget_min/max, currency, exchange_rate, bid_count, bid_avg)
-     * @return array{amount: float, currency: string, is_hourly: bool, minimum: float, reason: string}
+     * @param  int|null  $estimatedHours  Hours the scoring model estimated for the full scope
+     * @return array{amount: float, currency: string, is_hourly: bool, minimum: float, reason: string, warning: string|null}
      */
-    public function price(array $details): array
+    public function price(array $details, ?int $estimatedHours = null): array
     {
         $currency = strtoupper((string) ($details['currency'] ?? 'USD'));
         $rate = (float) ($details['exchange_rate'] ?? 1) ?: 1.0; // USD per 1 unit of currency
@@ -63,11 +67,25 @@ class PricingCalculator
             $reason .= $minimum === $floor ? '; raised to my floor price' : '; raised to the client\'s minimum budget';
         }
 
-        return $this->result($amount, $currency, false, $minimum, $reason);
+        $warning = null;
+        if ($estimatedHours !== null && $estimatedHours > 0) {
+            $scope = $estimatedHours * $this->settings->float('hourly_rate_usd') / $rate;
+            if ($scope > $amount * (float) config('bidradar.scope_warning_factor', 2)) {
+                $warning = sprintf('Budget too low for scope: estimate %d hours = %s %s', $estimatedHours, $currency, self::fmt(ceil($scope)));
+                // Don't just match the average: bid the scope price, capped at the client's budget maximum.
+                $raised = $max > 0 ? min($scope, max($max, $amount)) : $scope;
+                if ($raised > $amount) {
+                    $amount = $raised;
+                    $reason .= $raised < $scope ? '; raised to the client\'s budget maximum (scope is larger)' : '; raised to the scope estimate';
+                }
+            }
+        }
+
+        return $this->result($amount, $currency, false, $minimum, $reason, $warning);
     }
 
-    /** @return array{amount: float, currency: string, is_hourly: bool, minimum: float, reason: string} */
-    private function result(float $amount, string $currency, bool $hourly, float $minimum, string $reason): array
+    /** @return array{amount: float, currency: string, is_hourly: bool, minimum: float, reason: string, warning: string|null} */
+    private function result(float $amount, string $currency, bool $hourly, float $minimum, string $reason, ?string $warning = null): array
     {
         // Whole units for fixed bids; hourly keeps cents. Round up so we never land under a minimum.
         $amount = $hourly ? ceil($amount * 100) / 100 : ceil($amount);
@@ -78,6 +96,7 @@ class PricingCalculator
             'is_hourly' => $hourly,
             'minimum' => round($minimum, 2),
             'reason' => $reason,
+            'warning' => $warning,
         ];
     }
 

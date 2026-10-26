@@ -98,6 +98,18 @@
                 <span class="text-xs text-slate-500" x-data x-text="($wire.editedText.trim().split(/\s+/).filter(Boolean).length) + ' words'"></span>
             </div>
 
+            @if ($filtered)
+                <p class="rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">{{ $filtered }}</p>
+            @endif
+
+            @if ($draft->warnings)
+                <div class="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                    <ul class="list-disc space-y-0.5 pl-5">
+                        @foreach ($draft->warnings as $warning) <li>{{ $warning }}</li> @endforeach
+                    </ul>
+                </div>
+            @endif
+
             @if ($draft->check_failures)
                 <div class="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">
                     <p class="font-semibold">This draft failed some checks. Fix them before bidding:</p>
@@ -125,7 +137,7 @@
                 <button type="button" class="btn flex-col py-2.5" @disabled(! $draft->delivery_days)
                         x-on:click="copyText(@js((string) $draft->delivery_days), 'Delivery days copied')">
                     <span class="text-xs text-slate-500">Delivery</span>
-                    <span class="text-base">{{ $draft->delivery_days ?? '—' }} days</span>
+                    <span class="text-base">{{ $draft->delivery_days ? $draft->delivery_days.' days' : 'not set' }}</span>
                 </button>
                 @if (! empty($draft->milestones))
                     <button type="button" class="btn col-span-2 flex-col py-2.5 sm:col-span-1"
@@ -161,11 +173,20 @@
             </form>
         </div>
     @elseif (! $project->isBusy() && $project->fit_score !== null)
-        <div class="card text-center">
-            <p class="text-sm text-slate-600">No draft yet.</p>
-            <button wire:click="draft" class="btn-primary mt-3" @disabled($capReached)>Draft a proposal</button>
-            @if ($capReached)<p class="mt-2 text-xs text-red-600">Daily AI spend cap reached.</p>@endif
-        </div>
+        @if ($filtered)
+            <div class="rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 text-center">
+                <p class="text-sm font-semibold text-amber-900">{{ $filtered }}</p>
+                <p class="mt-1 text-xs text-amber-800">Not drafted automatically. Drafting spends AI credit.</p>
+                <button wire:click="draft(true)" wire:confirm="This project was filtered out. Draft it anyway?" class="btn mt-3" @disabled($capReached)>Draft anyway</button>
+                @if ($capReached)<p class="mt-2 text-xs text-red-600">Daily AI spend cap reached.</p>@endif
+            </div>
+        @else
+            <div class="card text-center">
+                <p class="text-sm text-slate-600">No draft yet.</p>
+                <button wire:click="draft" class="btn-primary mt-3" @disabled($capReached)>Draft a proposal</button>
+                @if ($capReached)<p class="mt-2 text-xs text-red-600">Daily AI spend cap reached.</p>@endif
+            </div>
+        @endif
     @endif
 
     {{-- Status --}}

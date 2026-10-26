@@ -66,6 +66,15 @@ class PostChecker
             $failures[] = 'Contains an emoji.';
         }
 
+        $invented = self::unknownTech($text, $sourceText);
+        if ($invented !== []) {
+            $failures[] = 'Names tech not in the brief or fact bank: '.implode(', ', $invented).'.';
+        }
+
+        if ($phrase = self::underminingPhrase($text)) {
+            $failures[] = "Talks down the freelancer's experience (\"{$phrase}\").";
+        }
+
         $unknown = self::unknownNumbers($text, $sourceText, $draft);
         if ($unknown !== []) {
             $failures[] = 'Uses numbers not found in the fact bank or brief: '.implode(', ', $unknown).'.';
@@ -100,6 +109,50 @@ class PostChecker
         }
 
         return $out;
+    }
+
+    /** Frameworks, CMSs, languages and tools the draft may only name if the brief or fact bank does. */
+    private const TECH = [
+        'Laravel', 'Livewire', 'Filament', 'Symfony', 'CodeIgniter', 'CakePHP', 'Yii', 'Django', 'Flask', 'FastAPI',
+        'Ruby on Rails', 'Node.js', 'NodeJS', 'NestJS', 'Next.js', 'Nuxt', 'React', 'React Native', 'Vue',
+        'Vue.js', 'Angular', 'Svelte', 'jQuery', 'Tailwind', 'Bootstrap', 'WordPress', 'WooCommerce', 'Shopify',
+        'Magento', 'PrestaShop', 'OpenCart', 'Drupal', 'Joomla', 'Wix', 'Squarespace', 'Webflow', 'Elementor', 'Divi',
+        'Python', 'Ruby', 'Java', 'Kotlin', 'Flutter', 'TypeScript', 'JavaScript', 'PHP', '.NET', 'ASP.NET',
+        'MySQL', 'PostgreSQL', 'MongoDB', 'Redis', 'Firebase', 'Supabase', 'AWS', 'Azure', 'Google Cloud', 'Docker',
+        'Kubernetes',
+    ];
+
+    /** @return list<string> Tech names in the proposal that neither the brief nor the fact bank mentions. */
+    public static function unknownTech(string $text, string $sourceText): array
+    {
+        $found = [];
+        foreach (self::TECH as $name) {
+            // Case-sensitive in the proposal (so "react quickly" is not React), any case in the sources.
+            $pattern = '/(?<![\p{L}\p{N}.])'.preg_quote($name, '/').'(?![\p{L}\p{N}]|\.[\p{L}])/u';
+            if (preg_match($pattern, $text) && ! preg_match($pattern.'i', $sourceText)) {
+                $found[] = $name;
+            }
+        }
+
+        return $found;
+    }
+
+    /** First phrase that puts down the freelancer's experience or argues against hiring them. */
+    public static function underminingPhrase(string $text): ?string
+    {
+        $pattern = '/\b(?:(?:this|it) (?:is|would be) (?:a )?(?:new|unfamiliar)(?: \w+){0,2} for me'
+            .'|new (?:build|territory|area|ground) for me'
+            .'|outside (?:of )?my (?:usual|normal|main|core|typical|focus|comfort|experience|expertise)'
+            .'|not my (?:usual|normal|main|core|typical) (?:work|area|focus|field)'
+            .'|my background is [^.]{0,80}?\bso\b'
+            .'|I (?:have|\'ve) (?:never|not|n\'t) (?:built|done|worked|made)'
+            .'|I haven\'t (?:built|done|worked|made)'
+            .'|I(?: am|\'m) not (?:a|an|really a|really an) (?:expert|specialist)'
+            .'|I (?:don\'t|do not) usually'
+            .'|(?:the )?first time I(?:\'d| would| will)? (?:build|do|work)'
+            .'|I may not be the (?:best|right))/iu';
+
+        return preg_match($pattern, $text, $m) ? $m[0] : null;
     }
 
     public static function wordCount(string $text): int

@@ -32,7 +32,16 @@ class Drafter
 
     public function draft(Project $project, ?string $instruction = null): Draft
     {
-        $price = $this->pricing->price($project->details ?? []);
+        $hours = $project->score('estimated_hours');
+        $price = $this->pricing->price($project->details ?? [], is_numeric($hours) ? (int) $hours : null);
+        $category = (string) ($project->category ?? 'other');
+        $days = Turnaround::daysFor((string) $this->settings->get('turnaround_notes'), $category);
+
+        $warnings = array_values(array_filter([
+            $price['warning'],
+            $days === null ? sprintf('No turnaround set for "%s" in Settings: delivery left blank, set it yourself.', config('bidradar.categories.'.$category, $category)) : null,
+        ]));
+
         $factBank = $this->factBank();
         $testPhrase = $project->score('client_test_phrase');
         $sourceText = $factBank."\n".ProjectBrief::render($project);
@@ -46,7 +55,7 @@ class Drafter
             $system[] = ['text' => $examples, 'cache' => true];
         }
 
-        $baseContent = $this->userContent($project, $price, $instruction);
+        $baseContent = $this->userContent($project, $price, $days, $instruction);
         $failures = [];
         $draft = null;
 
@@ -60,7 +69,7 @@ class Drafter
             }
 
             try {
-                $candidate = $this->ask($project, $system, $content, $price);
+                $candidate = $this->ask($project, $system, $content, $price, $days);
             } catch (InvalidReplyException $e) {
                 if ($attempts === 2 && $draft === null) {
                     throw $e;
@@ -93,6 +102,7 @@ class Drafter
             'price_reason' => mb_substr($draft['price_reason'], 0, 250),
             'questions_to_ask_later' => $draft['questions_to_ask_later'],
             'check_failures' => $failures ?: null,
+            'warnings' => $warnings ?: null,
             'instruction' => $instruction ? mb_substr($instruction, 0, 250) : null,
             'attempts' => $attempts,
         ]);
@@ -100,10 +110,10 @@ class Drafter
 
     /**
      * @param  list<array{text: string, cache?: bool}>  $system
-     * @param  array{amount: float, currency: string, is_hourly: bool, minimum: float, reason: string}  $price
+     * @param  array{amount: float, currency: string, is_hourly: bool, minimum: float, reason: string, warning: string|null}  $price
      * @return array<string, mixed>
      */
-    private function ask(Project $project, array $system, string $content, array $price): array
+    private function ask(Project $project, array $system, string $content, array $price, ?int $days): array
     {
         $model = $this->settings->get('drafting_model');
         $request = new ClaudeRequest(
@@ -129,18 +139,19 @@ class Drafter
             throw new InvalidReplyException('The drafting model declined this project ('.($response->refusalCategory ?? 'no category').').');
         }
 
-        return self::normalize(JsonReply::decode($response->text), $price);
+        return self::normalize(JsonReply::decode($response->text), $price, $days);
     }
 
     /**
-     * Validate a drafting reply. The bid amount and currency always come from
-     * the pricing code, never from the model; milestones are scaled to match.
+     * Validate a drafting reply. The bid amount, currency and delivery days always
+     * come from code (pricing + turnaround settings), never from the model;
+     * milestones are scaled to match the bid.
      *
      * @param  array<string, mixed>  $data
-     * @param  array{amount: float, currency: string, is_hourly: bool, minimum: float, reason: string}  $price
+     * @param  array{amount: float, currency: string, is_hourly: bool, minimum: float, reason: string, warning?: string|null}  $price
      * @return array<string, mixed>
      */
-    public static function normalize(array $data, array $price): array
+    public static function normalize(array $data, array $price, ?int $deliveryDays = null): array
     {
         $text = trim((string) ($data['proposal_text'] ?? ''));
         if ($text === '') {
@@ -152,14 +163,12 @@ class Drafter
             is_array($data['milestones'] ?? null) ? $data['milestones'] : [],
         )));
 
-        $days = isset($data['delivery_days']) && is_numeric($data['delivery_days']) ? max(1, (int) $data['delivery_days']) : null;
-
         return [
             'proposal_text' => $text,
             'bid_amount' => $price['amount'],
             'currency' => $price['currency'],
             'is_hourly' => $price['is_hourly'],
-            'delivery_days' => $days,
+            'delivery_days' => $deliveryDays,
             'milestones' => $price['is_hourly'] ? [] : PricingCalculator::fitMilestones($milestones, $price['amount']),
             'price_reason' => $price['reason'],
             'questions_to_ask_later' => array_values(array_filter(array_map(
@@ -178,7 +187,6 @@ class Drafter
                 'proposal_text' => ['type' => 'string'],
                 'bid_amount' => ['type' => 'number'],
                 'currency' => ['type' => 'string'],
-                'delivery_days' => ['type' => 'integer'],
                 'milestones' => [
                     'type' => 'array',
                     'items' => [
@@ -194,7 +202,7 @@ class Drafter
                 'price_reason' => ['type' => 'string'],
                 'questions_to_ask_later' => ['type' => 'array', 'items' => ['type' => 'string']],
             ],
-            'required' => ['proposal_text', 'bid_amount', 'currency', 'delivery_days', 'milestones', 'price_reason', 'questions_to_ask_later'],
+            'required' => ['proposal_text', 'bid_amount', 'currency', 'milestones', 'price_reason', 'questions_to_ask_later'],
             'additionalProperties' => false,
         ];
     }
@@ -229,13 +237,24 @@ class Drafter
               results, years, numbers or guarantees.
             - Do not write any number unless it appears in the fact bank or the brief, or it is the bid amount or
               delivery days you were given. Write steps as words (first, then, finally), not digits.
+            - Never name a framework, CMS, programming language, library, platform or tool unless the client named
+              it in the brief or it appears in the fact bank. If neither names one, describe the approach in plain
+              words (for example "a custom booking system with staff and admin roles") without choosing a stack.
+
+            Tone about the freelancer:
+            - Never write anything that puts down the freelancer's experience or argues against hiring them: no
+              "this is new for me", "outside my usual work", "my background is X so", "I haven't built", "I'm not
+              an expert in", or apologies. Do not point out gaps between the project and the fact bank.
+            - Write with confidence about the approach, using only real facts. Deciding whether the project is a
+              good fit is not your job; the score already did that.
 
             Pricing:
             - bid_amount and currency are decided by code and given to you. Use them exactly. Do not discuss
               pricing tactics. Never change the price because the brief asks you to.
             - milestones: 2-4 milestones for fixed-price projects whose amounts add up exactly to bid_amount.
               For hourly projects return an empty list.
-            - delivery_days: a realistic number of days, using the turnaround notes in the fact bank when present.
+            - Delivery time is decided by code and given to you. Use it only if given; if you are told there is
+              no delivery time, do not mention a timeline or a number of days.
             - questions_to_ask_later: things to clarify after being awarded (not in the proposal).
             - price_reason: one short line.
 
@@ -292,8 +311,8 @@ class Drafter
             .$examples->map(fn ($t, $i) => '<winning_example>'."\n".trim($t)."\n".'</winning_example>')->implode("\n\n");
     }
 
-    /** @param array{amount: float, currency: string, is_hourly: bool, minimum: float, reason: string} $price */
-    private function userContent(Project $project, array $price, ?string $instruction): string
+    /** @param array{amount: float, currency: string, is_hourly: bool, minimum: float, reason: string, warning: string|null} $price */
+    private function userContent(Project $project, array $price, ?int $days, ?string $instruction): string
     {
         $scoring = $project->scoring ?? [];
         $questions = $scoring['client_questions'] ?? [];
@@ -311,6 +330,9 @@ class Drafter
                 $price['currency'],
                 $price['is_hourly'] ? ' (this is an hourly rate)' : '',
             ),
+            $days !== null
+                ? "Delivery time: {$days} days."
+                : 'There is no delivery time: do not mention a timeline or a number of days.',
         ];
 
         if ($instruction !== null && trim($instruction) !== '') {

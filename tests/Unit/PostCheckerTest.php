@@ -18,7 +18,7 @@ class PostCheckerTest extends TestCase
 
     private function source(): string
     {
-        return 'After updating WooCommerce to 9.3 the checkout page spins forever. Budget USD 150-250. Bids 3 (average 180).';
+        return 'Skills: WooCommerce, PHP. After updating WooCommerce to 9.3 the checkout page spins forever. Budget USD 150-250. Bids 3 (average 180).';
     }
 
     public function test_a_good_draft_passes(): void
