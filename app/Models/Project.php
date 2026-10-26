@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
     'category', 'fit_score', 'status', 'ai_state', 'ai_error', 'auto_draft',
     'my_bid_amount', 'my_bid_currency', 'bid_count_at_bid', 'avg_bid_at_bid',
     'bid_placed_at', 'posted_at', 'purged_at', 'filter_reason', 'alerted_at',
+    'my_bid_rank', 'viewed', 'chat_started', 'won_at',
 ])]
 class Project extends Model
 {
@@ -41,6 +42,11 @@ class Project extends Model
             'posted_at' => 'datetime',
             'purged_at' => 'datetime',
             'alerted_at' => 'datetime',
+            'won_at' => 'datetime',
+            'viewed' => 'boolean',
+            'chat_started' => 'boolean',
+            'my_bid_rank' => 'integer',
+            'bid_count_at_bid' => 'integer',
         ];
     }
 

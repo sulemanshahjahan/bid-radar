@@ -13,7 +13,8 @@ Personal, single-user Laravel 13 + Livewire 4 + Tailwind 4 + SQLite app. Full bu
 
 - Phase 1 (core: login, settings, fact bank, paste mode, scoring, drafting, post-checks, project page, cost cap): built.
 - Phase 2 (Freelancer poller, rules filter, Telegram alerts + /pause /resume /today, feed, 24h purge): built. Fixtures in `tests/fixtures/freelancer` are synthetic (documented shape); replace with a real saved response once available.
-- Phase 3 (stats, weekly cap counter): not started. The Won -> winning example save already exists.
+- Phase 3: Stats page (view/chat/win rates by category and bid bucket, bids this week vs cap, recent wins) built; winning examples saved on Won.
+- Extras: failure alerts (Claude billing, bad Freelancer token, stalled polling), adjusted scores (bid count, rank rebuild mode), bids/hour tracking with one batched call per poll, Refresh button, Worth sponsoring badge, copy-ready Telegram follow-ups.
 
 ## Layout
 

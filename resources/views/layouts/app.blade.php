@@ -9,10 +9,10 @@
             <a href="{{ route('projects.index') }}" wire:navigate class="mr-auto flex items-center gap-2 font-semibold text-teal-700">
                 <img src="/icons/icon.svg" alt="" class="h-6 w-6"> BidRadar
             </a>
-            @php($nav = ['projects.index' => 'Feed', 'paste' => 'Paste', 'settings' => 'Settings'])
+            @php($nav = ['projects.index' => 'Feed', 'paste' => 'Paste', 'stats' => 'Stats', 'settings' => 'Settings'])
             @foreach ($nav as $route => $label)
                 <a href="{{ route($route) }}" wire:navigate
-                   class="rounded-md px-3 py-2 {{ request()->routeIs($route) ? 'bg-teal-50 font-medium text-teal-800' : 'text-slate-600 hover:bg-slate-100' }}">{{ $label }}</a>
+                   class="rounded-md px-2 py-2 sm:px-3 {{ request()->routeIs($route) ? 'bg-teal-50 font-medium text-teal-800' : 'text-slate-600 hover:bg-slate-100' }}">{{ $label }}</a>
             @endforeach
             <form method="POST" action="{{ route('logout') }}">
                 @csrf
