@@ -24,7 +24,8 @@ class Settings
     public function all(): array
     {
         if ($this->loaded === null) {
-            $stored = Setting::query()->pluck('value', 'key')->all();
+            // A stored null is treated as "not set", so the default applies instead of null.
+            $stored = array_filter(Setting::query()->pluck('value', 'key')->all(), fn ($value) => $value !== null);
             $this->loaded = array_merge(config('bidradar.defaults'), $stored);
         }
 

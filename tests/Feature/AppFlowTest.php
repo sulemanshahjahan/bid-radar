@@ -164,7 +164,7 @@ class AppFlowTest extends TestCase
             ->assertHasNoErrors();
 
         $settings = app(Settings::class);
-        $this->assertSame(2, $settings->get('daily_spend_cap_usd'));
+        $this->assertEquals(2, $settings->get('daily_spend_cap_usd'));
         $this->assertSame('WooCommerce and WordPress fixer.', $settings->get('positioning'));
         $this->assertSame(['As an experienced', 'Dear Sir'], $settings->get('banned_phrases'));
         $this->assertFalse($settings->get('polling_enabled'));

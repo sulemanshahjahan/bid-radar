@@ -152,6 +152,13 @@
         </section>
 
         <div class="sticky bottom-4 z-10">
+            @php($formErrors = collect($errors->getMessages())->filter(fn ($m, $k) => str_starts_with($k, 'form'))->flatten())
+            @if ($formErrors->isNotEmpty())
+                <div class="mb-2 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+                    <p class="font-medium">Not saved. Fix these first:</p>
+                    <ul class="mt-1 list-disc pl-5">@foreach ($formErrors as $message)<li>{{ $message }}</li>@endforeach</ul>
+                </div>
+            @endif
             <button type="submit" class="btn-primary w-full py-3 text-base shadow-lg">Save settings</button>
         </div>
     </form>
