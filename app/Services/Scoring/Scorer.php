@@ -36,7 +36,7 @@ class Scorer
             system: [
                 ['text' => $this->instructions(), 'cache' => true],
             ],
-            userContent: "Score this project.\n\n".ProjectBrief::render($project),
+            userContent: "Score this project.\n\n".ProjectBrief::render($project, bids: false),
             schema: self::schema((bool) $this->settings->get('rank_rebuild')),
             effort: $this->settings->get('scoring_effort', 'low'),
             maxTokens: 4000,
@@ -138,6 +138,9 @@ class Scorer
               checkout/payment/integration > ongoing maintenance > B2B/wholesale > new build.
             - Lower the score for: vague briefs, unrealistic budgets, work outside the services offered,
               requests to work off-platform.
+            - Fix work is often briefed in a line or two, with the list of fixes given later in chat
+              ("needs 17 fixes", "a few issues on my site"). For fixes on an existing site that is normal,
+              not a strong reason to lower the score: the proposal can ask what the fixes are.
             - Do not adjust for the number of bids or the client's payment status: code adjusts for those.
             - category: the single best match from the enum.
             - reason: one line explaining the score.
@@ -156,7 +159,8 @@ class Scorer
             $s->get('rank_rebuild') ? <<<'TXT'
             Also answer two yes/no flags:
             - quick_fix: true if this is a small, well-defined fix one skilled developer can deliver in 1-2 days.
-            - large_vague_or_off_niche: true if the job is large, vaguely specified, or outside the services offered.
+            - large_vague_or_off_niche: true if the job is large (more than about a week of work) or outside the
+              services offered. A short or vague brief alone is not enough: the score already accounts for that.
             TXT : null,
             ProjectBrief::UNTRUSTED_RULES,
         ]));

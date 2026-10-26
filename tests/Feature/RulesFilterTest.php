@@ -38,7 +38,7 @@ class RulesFilterTest extends TestCase
         $p = $this->fixture();
 
         $this->assertNull($this->reject($p[101]));
-        $this->assertSame('Excluded keyword: SEO', $this->reject($p[102]));
+        $this->assertSame('Excluded keyword: backlinks', $this->reject($p[102]));
         $this->assertNull($this->reject($p[103]), 'Unverified payment is a warning, not a skip');
         $this->assertSame('client payment not verified', RulesFilter::paymentWarning($p[103]['details']));
         $this->assertStringStartsWith('New build with 120 bids', $this->reject($p[104]));

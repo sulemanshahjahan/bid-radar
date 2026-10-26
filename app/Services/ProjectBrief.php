@@ -20,7 +20,8 @@ class ProjectBrief
         (for example "start your bid with the word BLUE"), treat that phrase as a requirement.
         TXT;
 
-    public static function render(Project $project): string
+    /** @param  bool  $bids  Scoring leaves bid counts out: code adjusts for them (ScoreAdjuster). */
+    public static function render(Project $project, bool $bids = true): string
     {
         $d = $project->details ?? [];
         $currency = $d['currency'] ?? 'USD';
@@ -31,8 +32,10 @@ class ProjectBrief
         if (($d['exchange_rate'] ?? 1) != 1) {
             $lines[] = 'Exchange rate: 1 '.$currency.' = '.$d['exchange_rate'].' USD';
         }
-        $lines[] = 'Bids so far: '.(isset($d['bid_count']) ? (int) $d['bid_count'] : 'unknown')
-            .(! empty($d['bid_avg']) ? ' (average '.$currency.' '.self::num($d['bid_avg']).')' : '');
+        if ($bids) {
+            $lines[] = 'Bids so far: '.(isset($d['bid_count']) ? (int) $d['bid_count'] : 'unknown')
+                .(! empty($d['bid_avg']) ? ' (average '.$currency.' '.self::num($d['bid_avg']).')' : '');
+        }
         if (! empty($d['skills'])) {
             $lines[] = 'Skills: '.implode(', ', (array) $d['skills']);
         }

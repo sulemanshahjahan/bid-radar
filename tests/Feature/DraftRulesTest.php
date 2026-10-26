@@ -93,7 +93,7 @@ class DraftRulesTest extends TestCase
             ->call('save');
 
         $project = Project::query()->sole();
-        $this->assertSame('Excluded keyword: SEO', $project->filter_reason);
+        $this->assertSame('Excluded keyword: backlinks', $project->filter_reason);
         $this->assertSame(0, $project->drafts()->count(), 'High score but filtered: no auto-draft.');
     }
 
