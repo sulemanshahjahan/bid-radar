@@ -51,7 +51,13 @@ class AnthropicClaudeClient implements ClaudeClient
                 $message = $this->client->messages->create(...$params);
             }
         } catch (APIStatusException $e) {
-            throw new ClaudeException('Claude API error '.$e->status.': '.($e->type?->value ?? 'unknown'), $e->status, $e);
+            throw new ClaudeException(
+                'Claude API error '.$e->status.': '.($e->type?->value ?? 'unknown'),
+                $e->status,
+                $e,
+                $e->type?->value,
+                mb_substr($e->getMessage(), 0, 2000), // status + response body; never contains the API key
+            );
         } catch (APIConnectionException $e) {
             throw new ClaudeException('Claude API connection failed: '.$e->getMessage(), null, $e);
         } catch (APIException $e) {

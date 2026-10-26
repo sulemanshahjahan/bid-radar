@@ -9,6 +9,7 @@ use App\Services\Claude\ClaudeRequest;
 use App\Services\Claude\InvalidReplyException;
 use App\Services\Claude\JsonReply;
 use App\Services\CostTracker;
+use App\Services\FailureAlerts;
 use App\Services\ProjectBrief;
 use App\Services\Settings;
 
@@ -23,6 +24,7 @@ class Scorer
         private readonly ClaudeClient $claude,
         private readonly Settings $settings,
         private readonly CostTracker $costs,
+        private readonly FailureAlerts $alerts,
     ) {}
 
     /** @return array<string, mixed> The validated scoring result. */
@@ -45,6 +47,7 @@ class Scorer
             $response = $this->claude->send($request);
         } catch (ClaudeException $e) {
             $this->costs->logError('claude', 'score', $project->id, $model, $e->httpStatus, $e->getMessage(), self::ms($started));
+            $this->alerts->claudeFailed($e);
             throw $e;
         }
         $this->costs->logClaude('score', $project->id, $model, $response, self::ms($started));

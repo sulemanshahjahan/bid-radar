@@ -3,6 +3,7 @@
 namespace App\Services\Freelancer;
 
 use App\Services\CostTracker;
+use App\Services\FailureAlerts;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
@@ -21,7 +22,12 @@ class FreelancerClient
 
     private const BACKOFF_LEVEL = 'freelancer:backoff_level';
 
-    public function __construct(private readonly CostTracker $log) {}
+    private const TOKEN_PAUSE_MINUTES = 60;
+
+    public function __construct(
+        private readonly CostTracker $log,
+        private readonly FailureAlerts $alerts,
+    ) {}
 
     /**
      * Active projects with full description, skills, upgrades and inline owner details.
@@ -111,6 +117,14 @@ class FreelancerClient
             $this->log->logApi('freelancer', $purpose, false, $response->status(), $ms, self::errorText($response));
             $minutes = $this->backOff();
             throw new FreelancerException("Freelancer API returned {$response->status()}; backing off {$minutes} min.", $response->status());
+        }
+
+        // Token rejected or expired: stop using it for an hour, and tell me.
+        if (in_array($response->status(), [401, 403], true)) {
+            $this->log->logApi('freelancer', $purpose, false, $response->status(), $ms, self::errorText($response));
+            Cache::put(self::BACKOFF_UNTIL, now()->addMinutes(self::TOKEN_PAUSE_MINUTES)->getTimestamp(), now()->addMinutes(self::TOKEN_PAUSE_MINUTES + 1));
+            $this->alerts->freelancerTokenRejected($response->status());
+            throw new FreelancerException("Freelancer rejected the token ({$response->status()}); polling paused for ".self::TOKEN_PAUSE_MINUTES.' min.', $response->status());
         }
 
         if (! $response->successful() || $response->json('status') !== 'success') {
