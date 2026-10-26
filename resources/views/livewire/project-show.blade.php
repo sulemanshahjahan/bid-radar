@@ -223,18 +223,36 @@
             <h2 class="font-semibold">Status</h2>
             <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">{{ \App\Models\Project::STATUSES[$project->status] ?? $project->status }}</span>
         </div>
-        <form wire:submit="markBidPlaced" class="flex gap-2">
-            <input type="number" step="any" inputmode="decimal" wire:model="myBid" class="field mt-0 flex-1" placeholder="My actual bid">
-            <button type="submit" class="btn-primary shrink-0">Bid placed</button>
+        <form wire:submit="markBidPlaced" class="space-y-2">
+            <div class="grid grid-cols-3 gap-2">
+                <label class="block"><span class="label text-xs">My bid</span><input type="number" step="any" inputmode="decimal" wire:model="myBid" class="field" placeholder="171"></label>
+                <label class="block"><span class="label text-xs">My rank</span><input type="number" inputmode="numeric" min="1" wire:model="myRank" class="field" placeholder="e.g. 12"></label>
+                <label class="block"><span class="label text-xs">Total bids</span><input type="number" inputmode="numeric" min="0" wire:model="totalBids" class="field" placeholder="e.g. 40"></label>
+            </div>
+            <button type="submit" class="btn-primary w-full">Bid placed</button>
         </form>
         @error('myBid') <span class="text-xs text-red-600">{{ $message }}</span> @enderror
+        @error('myRank') <span class="text-xs text-red-600">{{ $message }}</span> @enderror
+        @error('totalBids') <span class="text-xs text-red-600">{{ $message }}</span> @enderror
+        @foreach (['viewed' => 'Viewed', 'chat_started' => 'Chat started'] as $field => $label)
+            <div class="flex items-center justify-between gap-2 text-sm">
+                <span class="text-slate-700">{{ $label }}?</span>
+                <div class="flex gap-1">
+                    <button type="button" wire:click="setOutcome('{{ $field }}', true)" class="btn px-3 py-1 {{ $project->{$field} === true ? 'border-emerald-600 bg-emerald-50 text-emerald-700' : '' }}">Yes</button>
+                    <button type="button" wire:click="setOutcome('{{ $field }}', false)" class="btn px-3 py-1 {{ $project->{$field} === false ? 'border-slate-700 bg-slate-100' : '' }}">No</button>
+                    @if ($project->{$field} !== null)<button type="button" wire:click="setOutcome('{{ $field }}', null)" class="btn px-2 py-1 text-slate-400" title="Clear">×</button>@endif
+                </div>
+            </div>
+        @endforeach
         <div class="grid grid-cols-3 gap-2">
             <button wire:click="setStatus('skipped')" class="btn {{ $project->status === 'skipped' ? 'border-slate-700' : '' }}">Skipped</button>
             <button wire:click="setStatus('won')" class="btn {{ $project->status === 'won' ? 'border-emerald-600 text-emerald-700' : '' }}">Won</button>
             <button wire:click="setStatus('lost')" class="btn {{ $project->status === 'lost' ? 'border-red-500 text-red-600' : '' }}">Lost</button>
         </div>
         @if ($project->bid_placed_at)
-            <p class="text-xs text-slate-500">Bid {{ $project->my_bid_currency }} {{ (float) $project->my_bid_amount }} placed {{ $project->bid_placed_at->diffForHumans() }}.</p>
+            <p class="text-xs text-slate-500">
+                Bid {{ $project->my_bid_currency }} {{ (float) $project->my_bid_amount }} placed {{ $project->bid_placed_at->diffForHumans() }}@if ($project->my_bid_rank), ranked {{ $project->my_bid_rank }}@endif @if ($project->bid_count_at_bid !== null) of {{ $project->bid_count_at_bid }} bids @endif.
+            </p>
         @endif
     </div>
 

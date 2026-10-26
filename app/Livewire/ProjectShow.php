@@ -27,6 +27,10 @@ class ProjectShow extends Component
 
     public $myBid = '';
 
+    public $myRank = '';
+
+    public $totalBids = '';
+
     #[Locked]
     public ?int $loadedDraftId = null;
 
@@ -35,6 +39,8 @@ class ProjectShow extends Component
         $this->projectId = $project->id;
         $this->syncFromDraft();
         $this->myBid = $project->my_bid_amount ?? ($project->latestDraft?->bid_amount ?? '');
+        $this->myRank = $project->my_bid_rank ?? '';
+        $this->totalBids = $project->bid_count_at_bid ?? $project->detail('bid_count', '');
     }
 
     public function project(): Project
@@ -138,18 +144,31 @@ class ProjectShow extends Component
 
     public function markBidPlaced(): void
     {
-        $this->validate(['myBid' => 'required|numeric|gt:0']);
+        $this->validate([
+            'myBid' => 'required|numeric|gt:0',
+            'myRank' => 'nullable|integer|min:1',
+            'totalBids' => 'nullable|integer|min:0',
+        ]);
 
         $project = $this->project();
         $project->update([
             'status' => 'bid_placed',
             'my_bid_amount' => $this->myBid,
             'my_bid_currency' => $project->latestDraft?->currency ?? $project->detail('currency', 'USD'),
-            'bid_count_at_bid' => $project->detail('bid_count'),
+            'my_bid_rank' => $this->myRank === '' || $this->myRank === null ? null : (int) $this->myRank,
+            'bid_count_at_bid' => $this->totalBids === '' || $this->totalBids === null ? $project->detail('bid_count') : (int) $this->totalBids,
             'avg_bid_at_bid' => $project->detail('bid_avg'),
             'bid_placed_at' => $project->bid_placed_at ?? now(),
         ]);
         $this->dispatch('copied', 'Marked as bid placed');
+    }
+
+    /** "Viewed" and "Chat started": yes, no, or back to unknown (null). */
+    public function setOutcome(string $field, ?bool $value): void
+    {
+        abort_unless(in_array($field, ['viewed', 'chat_started'], true), 422);
+
+        $this->project()->update([$field => $value]);
     }
 
     public function setStatus(string $status): void
@@ -157,7 +176,7 @@ class ProjectShow extends Component
         abort_unless(in_array($status, ['new', 'drafted', 'skipped', 'won', 'lost'], true), 422);
 
         $project = $this->project();
-        $project->update(['status' => $status]);
+        $project->update(['status' => $status, 'won_at' => $status === 'won' ? ($project->won_at ?? now()) : null]);
 
         // Learning loop: my final (edited) proposal becomes a winning example for its category.
         if ($status === 'won' && $project->latestDraft !== null) {

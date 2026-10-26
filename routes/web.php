@@ -6,6 +6,7 @@ use App\Livewire\PasteProject;
 use App\Livewire\ProjectList;
 use App\Livewire\ProjectShow;
 use App\Livewire\SettingsPage;
+use App\Livewire\StatsPage;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('guest')->group(function () {
@@ -19,6 +20,7 @@ Route::middleware('auth')->group(function () {
     Route::livewire('/', ProjectList::class)->name('projects.index');
     Route::livewire('/paste', PasteProject::class)->name('paste');
     Route::livewire('/projects/{project}', ProjectShow::class)->name('projects.show');
+    Route::livewire('/stats', StatsPage::class)->name('stats');
     Route::livewire('/settings', SettingsPage::class)->name('settings');
 });
 
