@@ -44,7 +44,8 @@ class Drafter
 
         $factBank = $this->factBank();
         $testPhrase = $project->score('client_test_phrase');
-        $sourceText = $factBank."\n".ProjectBrief::render($project);
+        $brief = ProjectBrief::render($project);
+        $sourceText = $factBank."\n".$brief;
 
         $system = [
             ['text' => $this->rules(), 'cache' => false],
@@ -82,7 +83,7 @@ class Drafter
             }
 
             $draft = $candidate;
-            $failures = $this->checker->check($draft, $testPhrase, $sourceText, $price['minimum']);
+            $failures = $this->checker->check($draft, $testPhrase, $sourceText, $price['minimum'], $brief, $factBank);
             if ($failures === []) {
                 break;
             }
@@ -237,9 +238,15 @@ class Drafter
               results, years, numbers or guarantees.
             - Do not write any number unless it appears in the fact bank or the brief, or it is the bid amount or
               delivery days you were given. Write steps as words (first, then, finally), not digits.
-            - Never name a framework, CMS, programming language, library, platform or tool unless the client named
-              it in the brief or it appears in the fact bank. If neither names one, describe the approach in plain
+            - Only propose a framework, CMS, programming language, library, platform or tool as the solution if the
+              client named it in the brief (including its skills list). Otherwise describe the approach in plain
               words (for example "a custom booking system with staff and admin roles") without choosing a stack.
+              Tech from the fact bank may be mentioned only as past work ("I've fixed WooCommerce checkouts"),
+              never as the proposed solution.
+            - Never offer extras that are not in the fact bank: free support, a support or bug-fix period after
+              launch, a warranty, free revisions or maintenance.
+            - Write any amount of time or quantity with digits, never as words ("2 weeks", not "two weeks"), and
+              only if it is allowed by the number rule above.
 
             Tone about the freelancer:
             - Never write anything that puts down the freelancer's experience or argues against hiring them: no

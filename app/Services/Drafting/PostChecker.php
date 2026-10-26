@@ -27,9 +27,11 @@ class PostChecker
     /**
      * @param  array<string, mixed>  $draft  proposal_text, bid_amount, delivery_days, milestones, is_hourly
      * @param  string  $sourceText  Fact bank + brief: the only allowed source of numbers.
+     * @param  string|null  $briefText  The client's brief alone: the only allowed source of a proposed stack.
+     * @param  string|null  $factBankText  The fact bank alone: the only allowed source of extras like free support.
      * @return list<string>
      */
-    public function check(array $draft, ?string $testPhrase, string $sourceText, float $minimumBid = 0): array
+    public function check(array $draft, ?string $testPhrase, string $sourceText, float $minimumBid = 0, ?string $briefText = null, ?string $factBankText = null): array
     {
         $text = (string) ($draft['proposal_text'] ?? '');
         $failures = [];
@@ -71,11 +73,25 @@ class PostChecker
             $failures[] = 'Names tech not in the brief or fact bank: '.implode(', ', $invented).'.';
         }
 
+        if ($briefText !== null) {
+            $chosen = self::proposedStack($text, $briefText);
+            if ($chosen !== []) {
+                $failures[] = 'Proposes a stack the client did not ask for: '.implode(', ', $chosen).'.';
+            }
+        }
+
         if ($phrase = self::underminingPhrase($text)) {
             $failures[] = "Talks down the freelancer's experience (\"{$phrase}\").";
         }
 
-        $unknown = self::unknownNumbers($text, $sourceText, $draft);
+        if ($factBankText !== null && ($extra = self::inventedExtra($text, $factBankText))) {
+            $failures[] = "Offers an extra that is not in the fact bank (\"{$extra}\").";
+        }
+
+        $unknown = array_values(array_unique(array_merge(
+            self::unknownNumbers($text, $sourceText, $draft),
+            self::unknownSpelledAmounts($text, $sourceText, $draft),
+        )));
         if ($unknown !== []) {
             $failures[] = 'Uses numbers not found in the fact bank or brief: '.implode(', ', $unknown).'.';
         }
@@ -135,6 +151,85 @@ class PostChecker
         }
 
         return $found;
+    }
+
+    /**
+     * Tech the proposal puts forward as the solution ("build this as a WordPress plugin",
+     * "using Laravel") that the client did not name. Past experience ("I've fixed WooCommerce
+     * checkouts") is fine; only present/future solution wording counts.
+     *
+     * @return list<string>
+     */
+    public static function proposedStack(string $text, string $briefText): array
+    {
+        $verbs = '(?:build|develop|create|make|implement|code|write|use|using|set up|base it on|run it on|as an?|with an?|in an?)';
+        $found = [];
+        foreach (self::TECH as $name) {
+            $tech = '(?<![\p{L}\p{N}.])'.preg_quote($name, '/').'(?![\p{L}\p{N}]|\.[\p{L}])';
+            $solution = '/\b'.$verbs.'\b[^.?!]{0,40}?'.$tech.'/u';
+            if (preg_match($solution, $text) && ! preg_match('/'.$tech.'/iu', $briefText)) {
+                $found[] = $name;
+            }
+        }
+
+        return $found;
+    }
+
+    private const NUMBER_WORDS = [
+        'one' => 1, 'two' => 2, 'three' => 3, 'four' => 4, 'five' => 5, 'six' => 6, 'seven' => 7, 'eight' => 8,
+        'nine' => 9, 'ten' => 10, 'eleven' => 11, 'twelve' => 12, 'fifteen' => 15, 'twenty' => 20, 'thirty' => 30,
+        'forty' => 40, 'fifty' => 50, 'sixty' => 60, 'ninety' => 90, 'hundred' => 100,
+    ];
+
+    /**
+     * Spelled-out amounts with a unit ("two weeks", "thirty days") must come from the sources
+     * too, written either way. Plain words like "first" or "one question" are not amounts.
+     *
+     * @param  array<string, mixed>  $draft
+     * @return list<string>
+     */
+    public static function unknownSpelledAmounts(string $text, string $sourceText, array $draft): array
+    {
+        $words = implode('|', array_keys(self::NUMBER_WORDS));
+        $units = '(?:hours?|days?|weeks?|months?|years?|revisions?|rounds?|calls?)';
+        preg_match_all('/\b('.$words.')\s+(?:full\s+|free\s+|business\s+|working\s+)?'.$units.'\b/iu', $text, $m, PREG_SET_ORDER);
+
+        $allowed = array_flip(self::numbers($sourceText));
+        foreach (['bid_amount', 'delivery_days'] as $key) {
+            if (isset($draft[$key])) {
+                $allowed[self::normalizeNumber((string) $draft[$key])] = true;
+            }
+        }
+
+        $unknown = [];
+        foreach ($m as $match) {
+            $word = strtolower($match[1]);
+            $inSource = preg_match('/\b'.$word.'\b/iu', $sourceText) || isset($allowed[(string) self::NUMBER_WORDS[$word]]);
+            if (! $inSource) {
+                $unknown[] = strtolower($match[0]);
+            }
+        }
+
+        return array_values(array_unique($unknown));
+    }
+
+    /** Free support, warranties, bug-fix periods etc. are only allowed if the fact bank offers them. */
+    public static function inventedExtra(string $text, string $factBankText): ?string
+    {
+        // Only "extra service" wording, so scope like "includes support for multiple hotels" is fine.
+        $extra = '(?:support|bug[- ]?fix(?:ing|es)?|maintenance|warranty|revisions?)';
+        $pattern = '/\b(?:free|complimentary)\s+(?:\w+\s+){0,3}?'.$extra.'\b'
+            .'|\b'.$extra.'\b[^.?!]{0,30}?\b(?:is|are) (?:included|free)\b'
+            .'|\b(?:post[- ]launch|after[- ]launch|after delivery|after handover)\b[^.?!]{0,30}?\b(?:'.$extra.'|fixes)\b/iu';
+
+        if (! preg_match($pattern, $text, $m)) {
+            return null;
+        }
+
+        preg_match('/'.$extra.'/iu', $m[0], $kw);
+        $keyword = strtolower(rtrim($kw[0] ?? '', 's'));
+
+        return $keyword !== '' && mb_stripos($factBankText, $keyword) !== false ? null : trim($m[0]);
     }
 
     /** First phrase that puts down the freelancer's experience or argues against hiring them. */
