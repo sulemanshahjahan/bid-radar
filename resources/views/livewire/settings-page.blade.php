@@ -36,6 +36,11 @@
                 <textarea wire:model="form.turnaround_notes" rows="3" class="field" placeholder="Fix: 1-2 days&#10;Speed: 2-3 days"></textarea>
             </label>
             <label class="block">
+                <span class="label">My Freelancer portfolio</span>
+                <textarea wire:model="form.portfolio_notes" rows="3" class="field" placeholder="What your Freelancer profile portfolio shows, e.g. 3 WooCommerce stores built from Figma designs, 2 speed fixes. No links."></textarea>
+                <span class="text-xs text-slate-500">When a client asks for links or samples, drafts point here and offer samples in Freelancer chat. Leave empty if your profile has no portfolio.</span>
+            </label>
+            <label class="block">
                 <span class="label">Writing style notes</span>
                 <textarea wire:model="form.style_notes" rows="3" class="field"></textarea>
             </label>

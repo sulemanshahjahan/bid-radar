@@ -13,6 +13,7 @@ use App\Services\Drafting\Drafter;
 use App\Services\Drafting\PostChecker;
 use App\Services\Drafting\PricingCalculator;
 use App\Services\Drafting\Turnaround;
+use App\Services\Scoring\Scorer;
 use App\Services\Settings;
 use App\Services\Telegram\BotCommands;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -386,6 +387,53 @@ class DraftRulesTest extends TestCase
         ScoreProject::dispatchSync($project->id);
 
         Http::assertNothingSent();
+    }
+
+    // --- Feedback on the "Pixel-Perfect Mockup to Website" bid ------------------
+
+    public function test_scoring_keeps_client_requirements_and_the_draft_is_told_to_address_them(): void
+    {
+        $scoring = Scorer::normalize($this->scoringReply([
+            'client_requirements' => ['Link to past work with a similar look and feel', ''],
+        ]));
+        $this->assertSame(['Link to past work with a similar look and feel'], $scoring['client_requirements']);
+        $this->assertContains('client_requirements', Scorer::schema()['required']);
+
+        $project = $this->makeProject([], [], $scoring);
+        $this->claude->reply($this->draftReply(), 'claude-sonnet-5-5');
+        app(Drafter::class)->draft($project);
+
+        $this->assertStringContainsString("Client requirements to address: \n  * Link to past work with a similar look and feel", $this->claude->requests[0]->userContent);
+        $rules = $this->claude->requests[0]->system[0]['text'];
+        $this->assertStringContainsString('never say links are', $rules);
+        $this->assertStringContainsString('closest to this job in scope and type', $rules);
+        $this->assertStringContainsString('never a fragment on its own line', $rules);
+    }
+
+    public function test_portfolio_notes_are_part_of_the_fact_bank_and_saved_from_settings(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        Livewire::test(SettingsPage::class)
+            ->set('form.portfolio_notes', '3 WooCommerce stores built from Figma designs')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertSame('3 WooCommerce stores built from Figma designs', app(Settings::class)->get('portfolio_notes'));
+        $this->assertStringContainsString("## My Freelancer profile portfolio\n3 WooCommerce stores built from Figma designs", app(Drafter::class)->factBank());
+    }
+
+    public function test_the_sent_bid_would_now_fail_on_the_links_line_and_the_stats_fragment(): void
+    {
+        $sent = "Links aren't allowed in bids, so here is a close example in words.\n\nRating 4.9 from 409 reviews.\n\nWill the video sections use self-hosted files or embedded players?";
+
+        $this->assertSame("Links aren't allowed", PostChecker::linkRestrictionPhrase($sent));
+        $this->assertSame('Rating 4.9 from 409 reviews.', PostChecker::statsFragment($sent));
+
+        $this->assertNotNull(PostChecker::linkRestrictionPhrase('I cannot share links here.'));
+        $this->assertNull(PostChecker::linkRestrictionPhrase('Samples are in my Freelancer portfolio, and I can share more in the Freelancer chat.'));
+        $this->assertNull(PostChecker::statsFragment('I have a 4.9 rating from 409 reviews, mostly WooCommerce work.'));
+        $this->assertSame([], PostChecker::contactViolations('I can share more samples here in the Freelancer chat.'));
     }
 
     private function project12Proposal(): string

@@ -152,6 +152,7 @@ return [
         'services_not_offered' => '',
         'turnaround_notes' => '',
         'style_notes' => '',
+        'portfolio_notes' => '', // what is in my Freelancer profile portfolio (no links)
     ],
 
     // Fixed-price scope check: warn (and stop matching the average bid) when the

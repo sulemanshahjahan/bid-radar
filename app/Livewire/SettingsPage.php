@@ -33,7 +33,7 @@ class SettingsPage extends Component
     private const TEXTS = [
         'scoring_model', 'scoring_effort', 'drafting_model', 'drafting_effort',
         'positioning', 'stats_rating', 'stats_reviews', 'stats_completion', 'stats_on_time',
-        'services_offered', 'services_not_offered', 'turnaround_notes', 'style_notes',
+        'services_offered', 'services_not_offered', 'turnaround_notes', 'style_notes', 'portfolio_notes',
     ];
 
     /** More filled-in fields than this going blank in one save means the form state is broken, not edited. */
@@ -111,6 +111,7 @@ class SettingsPage extends Component
             'form.services_not_offered' => 'nullable|string|max:3000',
             'form.turnaround_notes' => 'nullable|string|max:3000',
             'form.style_notes' => 'nullable|string|max:3000',
+            'form.portfolio_notes' => 'nullable|string|max:3000',
         ]);
 
         $values = [];

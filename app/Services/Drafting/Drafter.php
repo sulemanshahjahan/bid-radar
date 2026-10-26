@@ -223,10 +223,21 @@ class Drafter
             - {$min}-{$max} words. Plain and direct, like a person typing, not a brochure.
             - The first two lines name the client's specific problem and how you would fix it. Clients see these lines in the preview.
             - If the client gave a test phrase, include it exactly, naturally, near the start.
-            - Answer every question the client asked.
+            - Answer every question the client asked, and address every client requirement you are given.
             - Give 2-3 concrete steps specific to this brief, written as short sentences (no numbered lists, no bullet walls).
             - End with one smart question that shows you read the brief.
-            - Mention the freelancer's real stats at most once, and only if they appear in the fact bank.
+            - Mention the freelancer's real stats at most once, and only if they appear in the fact bank. Work them
+              into a natural sentence ("I have a 4.9 rating from 409 reviews"), never a fragment on its own line
+              ("Rating 4.9 from 409 reviews.").
+
+            Proof of past work:
+            - Pick the past project from the fact bank closest to this job in scope and type. A small fix is not
+              evidence for a full build: if nothing comparable exists, leave the example out rather than use a
+              much smaller job.
+            - If the client asks for links, samples or a portfolio: never include a link, and never say links are
+              not allowed. If the fact bank's portfolio section is filled in, point to the portfolio on the
+              freelancer's Freelancer profile and offer to share relevant samples here in the Freelancer chat. If
+              it is empty, lead with the closest real past project instead.
             - Never open with "As an experienced", "I have X years", "Dear Sir/Madam", or "I am interested in your project".
             - No buzzwords, no exclamation marks, no emojis, no headings.
             - Never include email addresses, phone numbers, links, web addresses, @handles, or any mention of Skype,
@@ -291,6 +302,7 @@ class Drafter
             'Services NOT offered' => $s->get('services_not_offered'),
             'Past projects (from my own Freelancer.com history)' => $past,
             'Typical turnaround' => $s->get('turnaround_notes'),
+            'My Freelancer profile portfolio' => $s->get('portfolio_notes'),
             'Writing style notes' => $s->get('style_notes'),
         ];
 
@@ -323,6 +335,7 @@ class Drafter
     {
         $scoring = $project->scoring ?? [];
         $questions = $scoring['client_questions'] ?? [];
+        $requirements = $scoring['client_requirements'] ?? [];
 
         $parts = [
             "Write a proposal for this project.\n\n".ProjectBrief::render($project),
@@ -330,7 +343,8 @@ class Drafter
                 .'- Category: '.($scoring['category'] ?? 'other')."\n"
                 .'- Summary: '.($scoring['brief_summary'] ?? '')."\n"
                 .'- Client test phrase: '.(($scoring['client_test_phrase'] ?? null) ? '"'.$scoring['client_test_phrase'].'"' : 'none')."\n"
-                .'- Client questions to answer: '.($questions ? "\n  * ".implode("\n  * ", $questions) : 'none'),
+                .'- Client questions to answer: '.($questions ? "\n  * ".implode("\n  * ", $questions) : 'none')."\n"
+                .'- Client requirements to address: '.($requirements ? "\n  * ".implode("\n  * ", $requirements) : 'none'),
             sprintf(
                 'Use bid_amount %s and currency %s%s.',
                 rtrim(rtrim(number_format($price['amount'], 2, '.', ''), '0'), '.'),
