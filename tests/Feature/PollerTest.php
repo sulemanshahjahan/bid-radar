@@ -73,9 +73,9 @@ class PollerTest extends TestCase
 
         $this->assertSame('ok', $result['status']);
         $this->assertSame(7, Project::query()->count());
-        $this->assertSame(2, Project::query()->where('ai_state', 'queued')->count());
-        $this->assertSame(5, Project::query()->where('ai_state', 'filtered')->count());
-        Queue::assertPushed(ScoreProject::class, 2);
+        $this->assertSame(3, Project::query()->where('ai_state', 'queued')->count(), '101, 103 (unverified, scored with a warning) and 106');
+        $this->assertSame(4, Project::query()->where('ai_state', 'filtered')->count());
+        Queue::assertPushed(ScoreProject::class, 3);
 
         $p = Project::query()->where('freelancer_id', 101)->sole();
         $this->assertSame('freelancer', $p->source);
@@ -124,7 +124,7 @@ class PollerTest extends TestCase
         app(Poller::class)->poll();
 
         $this->assertSame(7, Project::query()->count());
-        Queue::assertPushed(ScoreProject::class, 2);
+        Queue::assertPushed(ScoreProject::class, 3);
     }
 
     public function test_interval_is_respected(): void

@@ -16,6 +16,7 @@ use App\Services\Drafting\Turnaround;
 use App\Services\Settings;
 use App\Services\Telegram\BotCommands;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Livewire\Livewire;
 use Tests\TestCase;
@@ -315,6 +316,51 @@ class DraftRulesTest extends TestCase
         $this->assertStringContainsString('two weeks', $retry);
         $this->assertNull($draft->check_failures);
         $this->assertSame(300.0, (float) $draft->bid_amount);
+    }
+
+    // --- Unverified payment: a warning, not a skip ----------------------------
+
+    public function test_unverified_client_is_scored_and_shown_but_not_drafted(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $project = $this->makeProject(['source' => 'freelancer'], ['client' => ['payment_verified' => false]]);
+        $this->claude->reply($this->scoringReply(['fit_score' => 60]));
+
+        ScoreProject::dispatchSync($project->id);
+
+        $project->refresh();
+        $this->assertSame('scored', $project->ai_state);
+        $this->assertSame(0, $project->drafts()->count());
+        $this->get('/')->assertSee($project->title)->assertSee('payment not verified');
+        Livewire::test(ProjectShow::class, ['project' => $project])
+            ->assertSee('Filtered: client payment not verified')
+            ->assertSee('Draft anyway');
+    }
+
+    public function test_high_fit_unverified_live_project_is_alerted_without_a_draft(): void
+    {
+        config(['bidradar.telegram.bot_token' => '123:abc', 'bidradar.telegram.chat_id' => '555']);
+        Http::fake(['api.telegram.org/*' => Http::response(['ok' => true])]);
+        $project = $this->makeProject(['source' => 'freelancer'], ['client' => ['payment_verified' => false]]);
+        $this->claude->reply($this->scoringReply(['fit_score' => 90]));
+
+        ScoreProject::dispatchSync($project->id);
+
+        $this->assertSame(0, $project->drafts()->count());
+        $this->assertCount(1, $this->claude->requests, 'Scored only; no drafting AI call.');
+        Http::assertSent(fn ($r) => str_contains($r['text'] ?? '', 'Not drafted: client payment not verified'));
+    }
+
+    public function test_high_fit_unverified_new_build_with_too_many_bids_is_not_alerted(): void
+    {
+        config(['bidradar.telegram.bot_token' => '123:abc', 'bidradar.telegram.chat_id' => '555']);
+        Http::fake();
+        $project = $this->makeProject(['source' => 'freelancer'], ['client' => ['payment_verified' => false], 'bid_count' => 120]);
+        $this->claude->reply($this->scoringReply(['fit_score' => 90, 'category' => 'new_build']));
+
+        ScoreProject::dispatchSync($project->id);
+
+        Http::assertNothingSent();
     }
 
     private function project12Proposal(): string

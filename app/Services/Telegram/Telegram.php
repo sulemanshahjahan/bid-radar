@@ -25,9 +25,9 @@ class Telegram
         return $this->configured() && (string) $chatId === (string) config('bidradar.telegram.chat_id');
     }
 
-    public function projectAlert(Project $project, bool $quiet = false, bool $capReached = false): bool
+    public function projectAlert(Project $project, bool $quiet = false, bool $capReached = false, ?string $note = null): bool
     {
-        $sent = $this->send(self::alertText($project, $capReached), self::alertButtons($project), $quiet, 'alert');
+        $sent = $this->send(self::alertText($project, $capReached, $note), self::alertButtons($project), $quiet, 'alert');
         if ($sent) {
             $project->forceFill(['alerted_at' => now()])->save();
         }
@@ -78,7 +78,7 @@ class Telegram
         return (array) $response->json();
     }
 
-    public static function alertText(Project $project, bool $capReached = false): string
+    public static function alertText(Project $project, bool $capReached = false, ?string $note = null): string
     {
         $d = $project->details ?? [];
         $s = $project->scoring ?? [];
@@ -125,6 +125,9 @@ class Telegram
         }
         if ($capReached) {
             $lines[] = '💸 Daily AI cap reached: no draft yet.';
+        }
+        if ($note !== null) {
+            $lines[] = '⚠️ '.$e($note);
         }
 
         return implode("\n", $lines);

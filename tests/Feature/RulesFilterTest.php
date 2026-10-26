@@ -39,7 +39,8 @@ class RulesFilterTest extends TestCase
 
         $this->assertNull($this->reject($p[101]));
         $this->assertSame('Excluded keyword: SEO', $this->reject($p[102]));
-        $this->assertSame('Client payment not verified', $this->reject($p[103]));
+        $this->assertNull($this->reject($p[103]), 'Unverified payment is a warning, not a skip');
+        $this->assertSame('client payment not verified', RulesFilter::paymentWarning($p[103]['details']));
         $this->assertStringStartsWith('New build with 120 bids', $this->reject($p[104]));
         $this->assertSame('Budget too low ($20 USD)', $this->reject($p[105]));
         $this->assertNull($this->reject($p[106]), 'INR 12500 x 0.012 = $150 USD passes');
@@ -73,7 +74,9 @@ class RulesFilterTest extends TestCase
         $p = $this->fixture()[101];
         $p['details']['client'] = [];
 
-        $this->assertSame('Client payment status unknown', $this->reject($p));
+        $this->assertNull($this->reject($p));
+        $this->assertSame('client payment status unknown', RulesFilter::paymentWarning($p['details']));
+        $this->assertNull(RulesFilter::paymentWarning($this->fixture()[101]['details']));
     }
 
     public function test_keywords_match_whole_words_only(): void

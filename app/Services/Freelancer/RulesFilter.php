@@ -32,13 +32,8 @@ class RulesFilter
             return "Excluded keyword: {$word}";
         }
 
-        $verified = $d['client']['payment_verified'] ?? null;
-        if ($verified === null) {
-            return 'Client payment status unknown';
-        }
-        if ($verified !== true) {
-            return 'Client payment not verified';
-        }
+        // Unverified payment is a warning, not a skip: see paymentWarning(). Such projects are
+        // scored and shown, but never drafted automatically (DraftGate).
 
         if (empty($d['budget_min']) && empty($d['budget_max'])) {
             return 'No budget';
@@ -67,6 +62,16 @@ class RulesFilter
         }
 
         return null;
+    }
+
+    /** @param array<string, mixed> $details */
+    public static function paymentWarning(array $details): ?string
+    {
+        return match ($details['client']['payment_verified'] ?? null) {
+            true => null,
+            null => 'client payment status unknown',
+            default => 'client payment not verified',
+        };
     }
 
     /** Case-insensitive, word-boundary match. Returns the first matching term. */

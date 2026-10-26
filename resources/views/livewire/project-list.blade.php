@@ -74,7 +74,7 @@
                             {{ $d['bid_count'] }} bids{{ ! empty($d['bid_avg']) ? ' (avg '.(float) $d['bid_avg'].')' : '' }} ·
                         @endisset
                         @if (isset($d['client']['payment_verified']))
-                            {{ $d['client']['payment_verified'] ? '✅ verified' : '❌ unverified' }}
+                            @if ($d['client']['payment_verified']) ✅ verified @else <span class="font-medium text-amber-700">⚠ payment not verified</span> @endif
                         @endif
                         @if (! empty($d['client']['rating'])) · ★{{ $d['client']['rating'] }} @endif
                         @if (! empty($d['client']['country'])) · {{ $d['client']['country'] }} @endif

@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Project;
 use App\Services\DraftGate;
+use App\Services\Freelancer\RulesFilter;
 use App\Services\Scoring\Scorer;
 use App\Services\Settings;
 use App\Services\Telegram\Telegram;
@@ -51,7 +52,13 @@ class ScoreProject implements ShouldQueue
 
         // Filtered projects (rules, new build with too many bids, low score) are never drafted
         // or alerted automatically, pasted or live. The owner can still draft anyway.
-        if ($gate->blockers($project->fresh()) !== []) {
+        $project = $project->fresh();
+        if ($gate->blockers($project) !== []) {
+            // High fit held back only by unverified payment: still alert me (without a draft) so I can decide.
+            if ($live && $high && $gate->onlyPaymentBlocks($project) && ! $settings->get('paused')) {
+                $telegram->projectAlert($project, note: 'Not drafted: '.RulesFilter::paymentWarning($project->details ?? []).'. Open to draft anyway.');
+            }
+
             return;
         }
 
