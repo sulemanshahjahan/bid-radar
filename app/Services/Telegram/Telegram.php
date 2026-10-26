@@ -30,14 +30,19 @@ class Telegram
 
     /**
      * The project alert. Plays a sound only for a top project (adjusted score at or above
-     * Auto-draft and fewer than 10 bids); every other project alert is silent. When a draft
-     * is ready, two silent follow-ups carry the proposal text alone, then the bid and delivery,
-     * so each can be copied on a phone with one long-press (the numbers also tap-to-copy).
+     * Auto-draft and fewer than 10 bids); every other project alert is silent. High-fit live
+     * projects are alerted as soon as they are scored ($draftComing), and the draft follows
+     * via draftReady(). If a draft already exists, the copy messages follow straight away.
      */
-    public function projectAlert(Project $project, bool $quiet = false, bool $capReached = false, ?string $note = null): bool
+    public function projectAlert(Project $project, bool $quiet = false, bool $capReached = false, ?string $note = null, bool $draftComing = false): bool
     {
         $silent = $quiet || ! self::isTopProject($project);
-        $sent = $this->send(self::alertText($project, $capReached, $note), self::alertButtons($project), $silent, 'alert');
+        $text = self::alertText($project, $capReached, $note);
+        if ($draftComing) {
+            $text .= "\n✍️ Writing the draft now; it will follow here.";
+        }
+
+        $sent = $this->send($text, self::alertButtons($project), $silent, 'alert');
         if (! $sent) {
             return false;
         }
@@ -45,11 +50,29 @@ class Telegram
 
         $draft = $project->latestDraft()->first();
         if ($draft !== null && ! $capReached && $note === null) {
-            $this->send(htmlspecialchars($draft->finalText(), ENT_QUOTES | ENT_HTML5), [], true, 'alert_copy');
-            $this->send(self::bidText($draft), [], true, 'alert_copy');
+            $this->sendDraftCopies($draft);
         }
 
         return true;
+    }
+
+    /** Follow-up after an alert-first message: the proposal alone, then bid and delivery. */
+    public function draftReady(Draft $draft): void
+    {
+        $this->sendDraftCopies($draft);
+    }
+
+    /** Follow-up when the promised draft could not be written. */
+    public function draftProblem(Project $project, string $reason): bool
+    {
+        return $this->send('✍️ No draft for <b>'.htmlspecialchars((string) $project->title, ENT_QUOTES | ENT_HTML5).'</b>: '
+            .htmlspecialchars($reason, ENT_QUOTES | ENT_HTML5), self::alertButtons($project), true, 'alert_copy');
+    }
+
+    private function sendDraftCopies(Draft $draft): void
+    {
+        $this->send(htmlspecialchars($draft->finalText(), ENT_QUOTES | ENT_HTML5), [], true, 'alert_copy');
+        $this->send(self::bidText($draft), [], true, 'alert_copy');
     }
 
     public static function isTopProject(Project $project): bool
@@ -67,6 +90,9 @@ class Telegram
         $lines[] = $draft->delivery_days
             ? 'Delivery: <code>'.$draft->delivery_days.'</code> days'
             : 'Delivery: not set (no turnaround for this category)';
+        if (! empty($draft->check_failures)) {
+            $lines[] = '⚠️ This draft failed some checks: review it in BidRadar before bidding.';
+        }
 
         return implode("\n", $lines);
     }

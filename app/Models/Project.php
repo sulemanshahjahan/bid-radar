@@ -7,13 +7,14 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Carbon;
 
 #[Fillable([
     'source', 'freelancer_id', 'url', 'title', 'description', 'details', 'scoring',
     'category', 'fit_score', 'status', 'ai_state', 'ai_error', 'auto_draft',
     'my_bid_amount', 'my_bid_currency', 'bid_count_at_bid', 'avg_bid_at_bid',
     'bid_placed_at', 'posted_at', 'purged_at', 'filter_reason', 'alerted_at',
-    'my_bid_rank', 'viewed', 'chat_started', 'won_at',
+    'my_bid_rank', 'viewed', 'chat_started', 'won_at', 'scored_at', 'drafted_at',
 ])]
 class Project extends Model
 {
@@ -43,6 +44,8 @@ class Project extends Model
             'purged_at' => 'datetime',
             'alerted_at' => 'datetime',
             'won_at' => 'datetime',
+            'scored_at' => 'datetime',
+            'drafted_at' => 'datetime',
             'viewed' => 'boolean',
             'chat_started' => 'boolean',
             'my_bid_rank' => 'integer',
@@ -81,6 +84,43 @@ class Project extends Model
     public function displayTitle(): string
     {
         return $this->title ?: ($this->purged_at ? 'Project #'.$this->id.' (data purged)' : 'Untitled project');
+    }
+
+    /**
+     * How fast this project moved: each step with the seconds since the step before it.
+     * "You bid" is when Bid placed was tapped in BidRadar.
+     *
+     * @return list<array{label: string, at: Carbon, seconds: int|null}>
+     */
+    public function timeline(): array
+    {
+        $steps = array_filter([
+            'Posted' => $this->source === 'freelancer' ? $this->posted_at : null,
+            'Found' => $this->created_at,
+            'Scored' => $this->scored_at,
+            'Alerted' => $this->alerted_at,
+            'Draft ready' => $this->drafted_at,
+            'You bid' => $this->bid_placed_at,
+        ]);
+
+        $out = [];
+        $previous = null;
+        foreach ($steps as $label => $at) {
+            $out[] = ['label' => $label, 'at' => $at, 'seconds' => $previous ? (int) $previous->diffInSeconds($at, true) : null];
+            $previous = $at;
+        }
+
+        return $out;
+    }
+
+    /** 45s, 2m 05s, 3h 10m */
+    public static function duration(int $seconds): string
+    {
+        return match (true) {
+            $seconds < 90 => $seconds.'s',
+            $seconds < 3600 => intdiv($seconds, 60).'m '.str_pad((string) ($seconds % 60), 2, '0', STR_PAD_LEFT).'s',
+            default => intdiv($seconds, 3600).'h '.intdiv($seconds % 3600, 60).'m',
+        };
     }
 
     public function isBusy(): bool

@@ -75,13 +75,19 @@ class DraftProject implements ShouldQueue
         $project->update([
             'ai_state' => 'drafted',
             'status' => $project->status === 'new' ? 'drafted' : $project->status,
+            'drafted_at' => $project->drafted_at ?? now(),
         ]);
         $this->sendAlert($project, $telegram, $settings);
     }
 
+    /**
+     * Normally the alert already went out when the project was scored (alert first), so this
+     * sends the follow-up: the draft copies, or why there is no draft. If no alert went out
+     * yet, it sends the full alert instead.
+     */
     private function sendAlert(Project $project, ?Telegram $telegram, ?Settings $settings, bool $capReached = false): void
     {
-        if (! $this->alert || $project->alerted_at !== null) {
+        if (! $this->alert) {
             return;
         }
 
@@ -90,6 +96,20 @@ class DraftProject implements ShouldQueue
             return;
         }
 
-        ($telegram ?? app(Telegram::class))->projectAlert($project->fresh(), capReached: $capReached);
+        $telegram ??= app(Telegram::class);
+        $project = $project->fresh();
+
+        if ($project->alerted_at === null) {
+            $telegram->projectAlert($project, capReached: $capReached);
+
+            return;
+        }
+
+        $draft = $project->latestDraft()->first();
+        match (true) {
+            $capReached => $telegram->draftProblem($project, 'daily AI cap reached. Raise it in Settings or draft tomorrow.'),
+            $project->ai_state === 'failed' || $draft === null => $telegram->draftProblem($project, (string) ($project->ai_error ?: 'drafting failed.')),
+            default => $telegram->draftReady($draft),
+        };
     }
 }

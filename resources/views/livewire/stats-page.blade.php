@@ -15,6 +15,20 @@
     </div>
     <p class="-mt-2 text-xs text-slate-500">Across {{ $overall['bids'] }} bids placed. Rates count "Viewed: yes", "Chat started: yes" and Won out of all bids placed.</p>
 
+    <section class="card">
+        <h2 class="font-semibold">Speed, last 7 days <span class="text-xs font-normal text-slate-500">(median, alerted live projects)</span></h2>
+        <dl class="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            @foreach ($speed as $step)
+                <div wire:key="speed-{{ $loop->index }}">
+                    <dt class="text-xs text-slate-500">{{ $step['label'] }}</dt>
+                    <dd class="text-lg font-semibold">{{ $step['median'] === null ? '—' : \App\Models\Project::duration($step['median']) }}</dd>
+                    <dd class="text-[11px] text-slate-400">{{ $step['count'] }} projects</dd>
+                </div>
+            @endforeach
+        </dl>
+        <p class="mt-2 text-xs text-slate-500">"You bid" is when you tapped Bid placed in BidRadar, so it includes the time to bid on Freelancer.</p>
+    </section>
+
     @foreach (['By category' => $byCategory, 'By bids on the project when I bid' => $byBucket] as $title => $rows)
         <section class="card">
             <h2 class="font-semibold">{{ $title }}</h2>
