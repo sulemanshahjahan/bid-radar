@@ -1,96 +1,299 @@
 {
-  "status": "success",
-  "request_id": "fixture-active-001",
-  "result": {
-    "total_count": 7,
-    "projects": [
-      {
-        "id": 101, "owner_id": 1, "title": "WooCommerce checkout failing after update", "status": "active",
-        "seo_url": "php/woocommerce-checkout-failing-after-update",
-        "currency": {"id": 1, "code": "USD", "sign": "$", "name": "US Dollar", "exchange_rate": 1, "country": "US"},
-        "description": "After updating WooCommerce to 9.3 the checkout page spins forever and no orders come through. Stripe gateway.",
-        "preview_description": "After updating WooCommerce to 9.3 the checkout page spins forever...",
-        "jobs": [{"id": 3, "name": "PHP"}, {"id": 1234, "name": "WooCommerce"}],
-        "type": "fixed", "bidperiod": 7,
-        "budget": {"minimum": 150, "maximum": 250, "project_type": "fixed", "currency_id": 1},
-        "bid_stats": {"bid_count": 3, "bid_avg": 180},
-        "time_submitted": 1793000000, "time_updated": 1793000060,
-        "upgrades": {"featured": false, "urgent": true, "sealed": false, "NDA": false}
-      },
-      {
-        "id": 102, "owner_id": 1, "title": "SEO backlinks for my WordPress site", "status": "active",
-        "seo_url": "seo/seo-backlinks-wordpress",
-        "currency": {"id": 1, "code": "USD", "exchange_rate": 1},
-        "description": "Need 200 high quality backlinks.",
-        "jobs": [{"id": 17, "name": "WordPress"}],
-        "type": "fixed", "budget": {"minimum": 30, "maximum": 250},
-        "bid_stats": {"bid_count": 12, "bid_avg": 90},
-        "time_submitted": 1793000100, "upgrades": {}
-      },
-      {
-        "id": 103, "owner_id": 2, "title": "Fix my Shopify theme header", "status": "active",
-        "seo_url": "shopify/fix-shopify-theme-header",
-        "currency": {"id": 1, "code": "USD", "exchange_rate": 1},
-        "description": "Header menu overlaps the logo on mobile.",
-        "jobs": [{"id": 999, "name": "Shopify"}],
-        "type": "fixed", "budget": {"minimum": 30, "maximum": 250},
-        "bid_stats": {"bid_count": 5, "bid_avg": 60},
-        "time_submitted": 1793000200, "upgrades": {}
-      },
-      {
-        "id": 104, "owner_id": 1, "title": "Ecommerce website development", "status": "active",
-        "seo_url": "php/ecommerce-website-development",
-        "currency": {"id": 1, "code": "USD", "exchange_rate": 1},
-        "description": "Build a store from scratch with WooCommerce.",
-        "jobs": [{"id": 1234, "name": "WooCommerce"}],
-        "type": "fixed", "budget": {"minimum": 250, "maximum": 750},
-        "bid_stats": {"bid_count": 120, "bid_avg": 400},
-        "time_submitted": 1793000300, "upgrades": {}
-      },
-      {
-        "id": 105, "owner_id": 1, "title": "Small PHP tweak", "status": "active",
-        "seo_url": "php/small-php-tweak",
-        "currency": {"id": 1, "code": "USD", "exchange_rate": 1},
-        "description": "Change a label on a contact form.",
-        "jobs": [{"id": 3, "name": "PHP"}],
-        "type": "fixed", "budget": {"minimum": 10, "maximum": 20},
-        "bid_stats": {"bid_count": 2, "bid_avg": 15},
-        "time_submitted": 1793000400, "upgrades": {}
-      },
-      {
-        "id": 106, "owner_id": 1, "title": "WordPress site slow, speed it up", "status": "active",
-        "seo_url": "wordpress/wordpress-site-slow",
-        "currency": {"id": 11, "code": "INR", "exchange_rate": 0.012},
-        "description": "My WordPress site takes 9 seconds to load. Please make it fast.",
-        "jobs": [{"id": 17, "name": "WordPress"}],
-        "type": "fixed", "budget": {"minimum": 1500, "maximum": 12500},
-        "bid_stats": {"bid_count": 0, "bid_avg": null},
-        "time_submitted": 1793000500, "upgrades": {"featured": true}
-      },
-      {
-        "id": 107, "owner_id": 1, "title": "Design a logo", "status": "active",
-        "seo_url": "logo-design/design-a-logo",
-        "currency": {"id": 1, "code": "USD", "exchange_rate": 1},
-        "description": "Need a modern logo.",
-        "jobs": [{"id": 32, "name": "Logo Design"}],
-        "type": "fixed", "budget": {"minimum": 30, "maximum": 250},
-        "bid_stats": {"bid_count": 40, "bid_avg": 50},
-        "time_submitted": 1793000600, "upgrades": {}
-      }
-    ],
-    "users": {
-      "1": {
-        "id": 1, "username": "client_one",
-        "status": {"payment_verified": true, "email_verified": true, "deposit_made": true},
-        "employer_reputation": {"entire_history": {"overall": 4.83, "reviews": 9, "all": 12, "complete": 11}},
-        "location": {"country": {"name": "United States", "code": "us"}}
-      },
-      "2": {
-        "id": 2, "username": "client_two",
-        "status": {"payment_verified": false},
-        "employer_reputation": {"entire_history": {"overall": 0, "reviews": 0, "all": 0}},
-        "location": {"country": {"name": "Canada", "code": "ca"}}
-      }
+    "status": "success",
+    "request_id": "fixture-active-001",
+    "result": {
+        "total_count": 7,
+        "projects": [
+            {
+                "id": 101,
+                "owner_id": 1,
+                "title": "WooCommerce checkout failing after update",
+                "status": "active",
+                "seo_url": "php/woocommerce-checkout-failing-after-update",
+                "currency": {
+                    "id": 1,
+                    "code": "USD",
+                    "sign": "$",
+                    "name": "US Dollar",
+                    "exchange_rate": 1,
+                    "country": "US"
+                },
+                "description": "After updating WooCommerce to 9.3 the checkout page spins forever and no orders come through. Stripe gateway.",
+                "preview_description": "After updating WooCommerce to 9.3 the checkout page spins forever...",
+                "jobs": [
+                    {
+                        "id": 3,
+                        "name": "PHP"
+                    },
+                    {
+                        "id": 1234,
+                        "name": "WooCommerce"
+                    }
+                ],
+                "type": "fixed",
+                "bidperiod": 7,
+                "budget": {
+                    "minimum": 150,
+                    "maximum": 250,
+                    "project_type": "fixed",
+                    "currency_id": 1
+                },
+                "bid_stats": {
+                    "bid_count": 3,
+                    "bid_avg": 180
+                },
+                "time_submitted": 1793000000,
+                "time_updated": 1793000060,
+                "upgrades": {
+                    "featured": false,
+                    "urgent": true,
+                    "sealed": false,
+                    "NDA": false
+                }
+            },
+            {
+                "id": 102,
+                "owner_id": 1,
+                "title": "SEO backlinks for my WordPress site",
+                "status": "active",
+                "seo_url": "seo/seo-backlinks-wordpress",
+                "currency": {
+                    "id": 1,
+                    "code": "USD",
+                    "exchange_rate": 1
+                },
+                "description": "Need 200 high quality backlinks.",
+                "jobs": [
+                    {
+                        "id": 17,
+                        "name": "WordPress"
+                    }
+                ],
+                "type": "fixed",
+                "budget": {
+                    "minimum": 30,
+                    "maximum": 250
+                },
+                "bid_stats": {
+                    "bid_count": 12,
+                    "bid_avg": 90
+                },
+                "time_submitted": 1793000100,
+                "upgrades": []
+            },
+            {
+                "id": 103,
+                "owner_id": 2,
+                "title": "Fix my Shopify theme header",
+                "status": "active",
+                "seo_url": "shopify/fix-shopify-theme-header",
+                "currency": {
+                    "id": 1,
+                    "code": "USD",
+                    "exchange_rate": 1
+                },
+                "description": "Header menu overlaps the logo on mobile.",
+                "jobs": [
+                    {
+                        "id": 999,
+                        "name": "Shopify"
+                    }
+                ],
+                "type": "fixed",
+                "budget": {
+                    "minimum": 30,
+                    "maximum": 250
+                },
+                "bid_stats": {
+                    "bid_count": 5,
+                    "bid_avg": 60
+                },
+                "time_submitted": 1793000200,
+                "upgrades": []
+            },
+            {
+                "id": 104,
+                "owner_id": 1,
+                "title": "Ecommerce website development",
+                "status": "active",
+                "seo_url": "php/ecommerce-website-development",
+                "currency": {
+                    "id": 1,
+                    "code": "USD",
+                    "exchange_rate": 1
+                },
+                "description": "Build a store from scratch with WooCommerce.",
+                "jobs": [
+                    {
+                        "id": 1234,
+                        "name": "WooCommerce"
+                    }
+                ],
+                "type": "fixed",
+                "budget": {
+                    "minimum": 250,
+                    "maximum": 750
+                },
+                "bid_stats": {
+                    "bid_count": 120,
+                    "bid_avg": 400
+                },
+                "time_submitted": 1793000300,
+                "upgrades": []
+            },
+            {
+                "id": 105,
+                "owner_id": 1,
+                "title": "Small PHP tweak",
+                "status": "active",
+                "seo_url": "php/small-php-tweak",
+                "currency": {
+                    "id": 1,
+                    "code": "USD",
+                    "exchange_rate": 1
+                },
+                "description": "Change a label on a contact form.",
+                "jobs": [
+                    {
+                        "id": 3,
+                        "name": "PHP"
+                    }
+                ],
+                "type": "fixed",
+                "budget": {
+                    "minimum": 10,
+                    "maximum": 20
+                },
+                "bid_stats": {
+                    "bid_count": 2,
+                    "bid_avg": 15
+                },
+                "time_submitted": 1793000400,
+                "upgrades": []
+            },
+            {
+                "id": 106,
+                "owner_id": null,
+                "title": "WordPress site slow, speed it up",
+                "status": "active",
+                "seo_url": "wordpress/wordpress-site-slow",
+                "currency": {
+                    "id": 11,
+                    "code": "INR",
+                    "exchange_rate": 0.012
+                },
+                "description": "My WordPress site takes 9 seconds to load. Please make it fast.",
+                "jobs": [
+                    {
+                        "id": 17,
+                        "name": "WordPress"
+                    }
+                ],
+                "type": "fixed",
+                "budget": {
+                    "minimum": 1500,
+                    "maximum": 12500
+                },
+                "bid_stats": {
+                    "bid_count": 0,
+                    "bid_avg": null
+                },
+                "time_submitted": 1793000500,
+                "upgrades": {
+                    "featured": true
+                },
+                "owner_info": {
+                    "city": "Pune",
+                    "country": "India",
+                    "reputation": {
+                        "entire_history": {
+                            "overall": 4.5,
+                            "reviews": 3,
+                            "all": 4
+                        }
+                    },
+                    "status": {
+                        "payment_verified": true,
+                        "email_verified": true
+                    },
+                    "registration_date": 1700000000
+                }
+            },
+            {
+                "id": 107,
+                "owner_id": 1,
+                "title": "Design a logo",
+                "status": "active",
+                "seo_url": "logo-design/design-a-logo",
+                "currency": {
+                    "id": 1,
+                    "code": "USD",
+                    "exchange_rate": 1
+                },
+                "description": "Need a modern logo.",
+                "jobs": [
+                    {
+                        "id": 32,
+                        "name": "Logo Design"
+                    }
+                ],
+                "type": "fixed",
+                "budget": {
+                    "minimum": 30,
+                    "maximum": 250
+                },
+                "bid_stats": {
+                    "bid_count": 40,
+                    "bid_avg": 50
+                },
+                "time_submitted": 1793000600,
+                "upgrades": []
+            }
+        ],
+        "users": {
+            "1": {
+                "id": 1,
+                "username": "client_one",
+                "status": {
+                    "payment_verified": true,
+                    "email_verified": true,
+                    "deposit_made": true
+                },
+                "employer_reputation": {
+                    "entire_history": {
+                        "overall": 4.83,
+                        "reviews": 9,
+                        "all": 12,
+                        "complete": 11
+                    }
+                },
+                "location": {
+                    "country": {
+                        "name": "United States",
+                        "code": "us"
+                    }
+                }
+            },
+            "2": {
+                "id": 2,
+                "username": "client_two",
+                "status": {
+                    "payment_verified": false
+                },
+                "employer_reputation": {
+                    "entire_history": {
+                        "overall": 0,
+                        "reviews": 0,
+                        "all": 0
+                    }
+                },
+                "location": {
+                    "country": {
+                        "name": "Canada",
+                        "code": "ca"
+                    }
+                }
+            }
+        }
     }
-  }
 }

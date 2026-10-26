@@ -39,11 +39,10 @@ class FreelancerClient
             'full_description' => 'true',
             'job_details' => 'true',
             'upgrade_details' => 'true',
+            'owner_info' => 'true',
             'user_details' => 'true',
             'user_status' => 'true',
             'user_employer_reputation' => 'true',
-            'user_country_details' => 'true',
-            'user_location_details' => 'true',
             'compact' => 'true',
         ], fn ($v) => $v !== null && $v !== []));
 

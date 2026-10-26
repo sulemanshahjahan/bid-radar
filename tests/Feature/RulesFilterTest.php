@@ -24,7 +24,7 @@ class RulesFilterTest extends TestCase
         $json = json_decode(file_get_contents(base_path('tests/fixtures/freelancer/active_projects.json')), true)['result'];
 
         return collect($json['projects'])
-            ->mapWithKeys(fn ($p) => [$p['id'] => ProjectMapper::map($p, $json['users'][(string) $p['owner_id']] ?? null)])
+            ->mapWithKeys(fn ($p) => [$p['id'] => ProjectMapper::map($p, $json['users'][(string) ($p['owner_id'] ?? '')] ?? null)])
             ->all();
     }
 
@@ -58,6 +58,22 @@ class RulesFilterTest extends TestCase
         $this->assertSame(['PHP', 'WooCommerce'], $p['details']['skills']);
         $this->assertSame(['urgent'], $p['details']['upgrades']);
         $this->assertSame(['payment_verified' => true, 'rating' => 4.8, 'reviews' => 9, 'projects' => 12, 'country' => 'United States'], $p['details']['client']);
+    }
+
+    public function test_client_details_are_read_from_owner_info_when_the_owner_is_hidden(): void
+    {
+        $p = $this->fixture()[106];
+
+        $this->assertNull($p['details']['owner_id']);
+        $this->assertSame(['payment_verified' => true, 'rating' => 4.5, 'reviews' => 3, 'projects' => 4, 'country' => 'India'], $p['details']['client']);
+    }
+
+    public function test_missing_payment_status_is_reported_as_unknown_not_unverified(): void
+    {
+        $p = $this->fixture()[101];
+        $p['details']['client'] = [];
+
+        $this->assertSame('Client payment status unknown', $this->reject($p));
     }
 
     public function test_keywords_match_whole_words_only(): void
