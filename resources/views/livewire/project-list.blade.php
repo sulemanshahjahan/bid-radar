@@ -72,7 +72,7 @@
                             {{ $d['currency'] ?? 'USD' }} {{ (float) ($d['budget_min'] ?? 0) }}–{{ (float) ($d['budget_max'] ?? 0) }}{{ ($d['type'] ?? '') === 'hourly' ? '/hr' : '' }} ·
                         @endif
                         @isset($d['bid_count'])
-                            {{ $d['bid_count'] }} bids{{ ! empty($d['bid_avg']) ? ' (avg '.(float) $d['bid_avg'].')' : '' }}
+                            {{ $d['bid_count'] }} bids{{ ! empty($d['bid_avg']) ? ' (avg '.round((float) $d['bid_avg']).')' : '' }}
                             @php($rate = \App\Services\BidTracker::perHour($project))
                             @if ($rate !== null) · {{ $rate }}/hr @endif ·
                         @endisset
