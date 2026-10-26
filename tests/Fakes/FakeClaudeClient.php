@@ -3,6 +3,7 @@
 namespace Tests\Fakes;
 
 use App\Services\Claude\ClaudeClient;
+use App\Services\Claude\ClaudeException;
 use App\Services\Claude\ClaudeRequest;
 use App\Services\Claude\ClaudeResponse;
 use RuntimeException;
@@ -13,7 +14,7 @@ use RuntimeException;
  */
 class FakeClaudeClient implements ClaudeClient
 {
-    /** @var list<ClaudeResponse> */
+    /** @var list<ClaudeResponse|ClaudeException> */
     private array $replies = [];
 
     /** @var list<ClaudeRequest> */
@@ -33,11 +34,24 @@ class FakeClaudeClient implements ClaudeClient
         return $this;
     }
 
+    /** Queue an API error instead of a reply. */
+    public function fail(ClaudeException $e): self
+    {
+        $this->replies[] = $e;
+
+        return $this;
+    }
+
     public function send(ClaudeRequest $request): ClaudeResponse
     {
         $this->requests[] = $request;
 
-        return array_shift($this->replies) ?? throw new RuntimeException('FakeClaudeClient: no reply queued.');
+        $next = array_shift($this->replies) ?? throw new RuntimeException('FakeClaudeClient: no reply queued.');
+        if ($next instanceof ClaudeException) {
+            throw $next;
+        }
+
+        return $next;
     }
 
     /** Everything the model would read for request $i (system + user). */
