@@ -9,7 +9,7 @@
             <a href="{{ route('projects.index') }}" wire:navigate class="mr-auto flex items-center gap-2 font-semibold text-teal-700">
                 <img src="/icons/icon.svg" alt="" class="h-6 w-6"> BidRadar
             </a>
-            @php($nav = ['projects.index' => 'Projects', 'paste' => 'Paste', 'settings' => 'Settings'])
+            @php($nav = ['projects.index' => 'Feed', 'paste' => 'Paste', 'settings' => 'Settings'])
             @foreach ($nav as $route => $label)
                 <a href="{{ route($route) }}" wire:navigate
                    class="rounded-md px-3 py-2 {{ request()->routeIs($route) ? 'bg-teal-50 font-medium text-teal-800' : 'text-slate-600 hover:bg-slate-100' }}">{{ $label }}</a>

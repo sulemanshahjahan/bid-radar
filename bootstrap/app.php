@@ -14,6 +14,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(NoIndex::class);
+        $middleware->validateCsrfTokens(except: ['telegram/webhook']);
         $middleware->redirectGuestsTo(fn () => route('login'));
         $middleware->redirectUsersTo(fn () => route('projects.index'));
     })

@@ -4,12 +4,15 @@ namespace App\Livewire;
 
 use App\Models\Project;
 use App\Services\CostTracker;
+use App\Services\Freelancer\FreelancerClient;
+use App\Services\Freelancer\Poller;
 use App\Services\Settings;
+use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
-#[Title('Projects')]
+#[Title('Feed')]
 class ProjectList extends Component
 {
     #[Url]
@@ -18,7 +21,7 @@ class ProjectList extends Component
     #[Url]
     public bool $showLow = false;
 
-    public function render(Settings $settings, CostTracker $costs)
+    public function render(Settings $settings, CostTracker $costs, FreelancerClient $freelancer)
     {
         $medium = $settings->int('threshold_medium');
 
@@ -32,14 +35,23 @@ class ProjectList extends Component
             ->limit(100)
             ->get();
 
+        $lastPoll = Cache::get(Poller::LAST_SUCCESS);
+
         return view('livewire.project-list', [
             'projects' => $projects,
-            'counts' => Project::query()->selectRaw('status, count(*) as c')->groupBy('status')->pluck('c', 'status'),
-            'high' => $settings->int('threshold_high'),
+            'counts' => Project::query()->where('ai_state', '!=', 'filtered')->selectRaw('status, count(*) as c')->groupBy('status')->pluck('c', 'status'),
+            'high' => $high = $settings->int('threshold_high'),
             'medium' => $medium,
             'spentToday' => $costs->spentToday(),
             'cap' => $costs->dailyCap(),
             'anyBusy' => $projects->contains(fn (Project $p) => $p->isBusy()),
+            'polling' => match (true) {
+                ! $settings->pollingActive() => 'off',
+                (bool) $settings->get('paused') => 'paused',
+                $freelancer->backoffUntil() !== null => 'backing off',
+                default => 'on',
+            },
+            'lastPoll' => $lastPoll ? now()->setTimestamp($lastPoll) : null,
         ]);
     }
 }

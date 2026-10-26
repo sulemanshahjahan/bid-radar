@@ -5,6 +5,7 @@ namespace Tests;
 use App\Models\Project;
 use App\Services\Claude\ClaudeClient;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
+use Illuminate\Support\Facades\Http;
 use Tests\Fakes\FakeClaudeClient;
 
 abstract class TestCase extends BaseTestCase
@@ -18,6 +19,9 @@ abstract class TestCase extends BaseTestCase
         // Tests must never call the real Claude API.
         $this->claude = new FakeClaudeClient;
         $this->app->instance(ClaudeClient::class, $this->claude);
+
+        // ...and never reach Freelancer or Telegram either. Each test fakes what it needs.
+        Http::preventStrayRequests();
     }
 
     /** @param array<string, mixed> $overrides */

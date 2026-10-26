@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\TelegramWebhookController;
 use App\Livewire\PasteProject;
 use App\Livewire\ProjectList;
 use App\Livewire\ProjectShow;
@@ -20,3 +21,7 @@ Route::middleware('auth')->group(function () {
     Route::livewire('/projects/{project}', ProjectShow::class)->name('projects.show');
     Route::livewire('/settings', SettingsPage::class)->name('settings');
 });
+
+Route::post('/telegram/webhook', TelegramWebhookController::class)
+    ->middleware('throttle:60,1')
+    ->name('telegram.webhook');

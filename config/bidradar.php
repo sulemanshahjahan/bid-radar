@@ -15,7 +15,27 @@ return [
     'freelancer' => [
         'polling_enabled' => (bool) env('FREELANCER_POLLING_ENABLED', false),
         'oauth_token' => env('FREELANCER_OAUTH_TOKEN'),
+        'base_url' => env('FREELANCER_BASE_URL', 'https://www.freelancer.com/api/'),
         'project_url' => 'https://www.freelancer.com/projects/{seo_url}',
+        'timeout' => 20,
+        'page_limit' => 50,
+        // Exponential backoff after a 429/5xx: 2, 4, 8 ... minutes, capped.
+        'backoff_max_minutes' => 60,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Telegram
+    |--------------------------------------------------------------------------
+    |
+    | Alerts go ONLY to TELEGRAM_CHAT_ID. Updates from any other chat are ignored.
+    |
+    */
+
+    'telegram' => [
+        'bot_token' => env('TELEGRAM_BOT_TOKEN'),
+        'chat_id' => env('TELEGRAM_CHAT_ID'),
+        'webhook_secret' => env('TELEGRAM_WEBHOOK_SECRET'),
     ],
 
     /*
@@ -103,6 +123,8 @@ return [
         'daily_spend_cap_usd' => 2.00,
         'weekly_bid_cap' => 50,
         'polling_enabled' => false,
+        'poll_interval_minutes' => 2,
+        'paused' => false, // Telegram /pause and /resume
 
         // Pricing
         'hourly_rate_usd' => 25,

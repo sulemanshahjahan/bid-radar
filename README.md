@@ -25,4 +25,8 @@ Set `ANTHROPIC_API_KEY` in `.env` before pasting a project.
 |---|---|
 | `php artisan bidradar:user you@example.com` | Create or update the single owner account (asks for the password) |
 | `php artisan bidradar:backup` | Snapshot the SQLite DB to `storage/app/backups` (scheduled daily, keeps 14) |
+| `php artisan bidradar:poll --dry-run` | Fetch + filter new Freelancer projects, print results, save nothing |
+| `php artisan bidradar:skills` | Look up Freelancer skill IDs for the target skills |
+| `php artisan bidradar:purge` | Delete project data older than 24h (scheduled hourly) |
+| `php artisan bidradar:telegram chat-id\|webhook\|test` | Telegram setup helpers |
 | `php artisan test` | Test suite (uses a fake Claude client, costs nothing) |
