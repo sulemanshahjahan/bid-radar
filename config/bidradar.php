@@ -125,7 +125,7 @@ return [
         'weekly_bid_cap' => 50,
         'sponsor_min_budget_usd' => 100, // "Worth sponsoring" needs a budget top at or above this
         'polling_enabled' => false,
-        'poll_interval_minutes' => 2,
+        'poll_interval_seconds' => 30, // owner's choice 2026-10-27, within Freelancer's written permission
         'paused' => false, // Telegram /pause and /resume
 
         // Pricing

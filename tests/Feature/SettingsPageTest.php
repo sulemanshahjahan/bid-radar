@@ -36,7 +36,7 @@ class SettingsPageTest extends TestCase
             'daily_spend_cap_usd' => 3.5,
             'weekly_bid_cap' => 40,
             'polling_enabled' => true,
-            'poll_interval_minutes' => 5,
+            'poll_interval_seconds' => 300,
             'paused' => true,
             'hourly_rate_usd' => 30,
             'floor_price_usd' => 35,

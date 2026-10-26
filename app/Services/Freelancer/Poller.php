@@ -22,6 +22,11 @@ class Poller
 
     public const LAST_SUCCESS = 'freelancer:last_success_at';
 
+    public const LAST_BID_REFRESH = 'freelancer:last_bid_refresh_at';
+
+    /** The extra bid-stats call stays at most once every 2 minutes, however often new projects are searched. */
+    public const BID_REFRESH_SECONDS = 120;
+
     private const SKILL_IDS = 'freelancer:skill_ids';
 
     /** Projects whose bid counts are still worth following. */
@@ -52,7 +57,7 @@ class Poller
             return ['status' => 'backoff', 'message' => 'Backing off until '.date('H:i:s', $until).'.'];
         }
 
-        $interval = max(1, $this->settings->int('poll_interval_minutes')) * 60;
+        $interval = max(30, $this->settings->int('poll_interval_seconds'));
         $last = (int) Cache::get(self::LAST_POLL, 0);
         if ($scheduled && now()->getTimestamp() - $last < $interval - 10) {
             return ['status' => 'waiting', 'message' => 'Next poll not due yet.'];
@@ -142,13 +147,18 @@ class Poller
     }
 
     /**
-     * One extra request per poll: current bid stats for open projects from the last
+     * One extra request (at most every BID_REFRESH_SECONDS): current bid stats for open projects from the last
      * 24 hours that this poll's search did not return. A failure here never fails the poll.
      *
      * @param  list<int>  $alreadySeen
      */
     private function refreshTrackedBids(array $alreadySeen): void
     {
+        if (now()->getTimestamp() - (int) Cache::get(self::LAST_BID_REFRESH, 0) < self::BID_REFRESH_SECONDS - 10) {
+            return;
+        }
+        Cache::forever(self::LAST_BID_REFRESH, now()->getTimestamp());
+
         $tracked = Project::query()
             ->where('source', 'freelancer')
             ->whereNotNull('freelancer_id')
