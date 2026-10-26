@@ -30,6 +30,13 @@ class DraftProject implements ShouldQueue
         public readonly bool $alert = false,
     ) {}
 
+    /** The job died outside handle()'s own error handling (e.g. a database lock): never leave it "queued". */
+    public function failed(?Throwable $e): void
+    {
+        Project::query()->whereKey($this->projectId)->whereIn('ai_state', ['queued', 'drafting'])
+            ->update(['ai_state' => 'failed', 'ai_error' => 'Drafting failed: '.mb_substr((string) $e?->getMessage(), 0, 300)]);
+    }
+
     public function handle(Drafter $drafter, CostTracker $costs, ?Telegram $telegram = null, ?Settings $settings = null): void
     {
         $project = Project::query()->find($this->projectId);

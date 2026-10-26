@@ -23,6 +23,13 @@ class ScoreProject implements ShouldQueue
 
     public function __construct(public readonly int $projectId) {}
 
+    /** The job died outside handle()'s own error handling (e.g. a database lock): never leave it "queued". */
+    public function failed(?Throwable $e): void
+    {
+        Project::query()->whereKey($this->projectId)->whereIn('ai_state', ['queued', 'scoring'])
+            ->update(['ai_state' => 'failed', 'ai_error' => 'Scoring failed: '.mb_substr((string) $e?->getMessage(), 0, 300)]);
+    }
+
     public function handle(Scorer $scorer, Settings $settings, Telegram $telegram, DraftGate $gate, ScoreAdjuster $adjuster): void
     {
         $project = Project::query()->find($this->projectId);

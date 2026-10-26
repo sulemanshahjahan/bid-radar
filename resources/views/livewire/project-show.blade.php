@@ -49,7 +49,7 @@
             </div>
             <div>
                 <dt class="text-xs text-slate-500">Bids</dt>
-                <dd class="font-medium">{{ $d['bid_count'] ?? '—' }}{{ ! empty($d['bid_avg']) ? ' · avg '.(float) $d['bid_avg'] : '' }}</dd>
+                <dd class="font-medium">{{ $d['bid_count'] ?? '—' }}{{ ! empty($d['bid_avg']) ? ' · avg '.round((float) $d['bid_avg']) : '' }}</dd>
                 @if ($bidsPerHour !== null)<dd class="text-xs text-slate-500">{{ $bidsPerHour }} bids/hr</dd>@endif
             </div>
             <div>
