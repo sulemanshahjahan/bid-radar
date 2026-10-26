@@ -136,8 +136,9 @@ class Scorer
             - fit_score 0-100: how likely this freelancer can win and deliver this job well.
             - Priority, best first: fix/broken feature > security/malware > speed/performance >
               checkout/payment/integration > ongoing maintenance > B2B/wholesale > new build.
-            - Lower the score for: vague briefs, unrealistic budgets, unverified payment, work outside
-              the services offered, very high bid counts, requests to work off-platform.
+            - Lower the score for: vague briefs, unrealistic budgets, work outside the services offered,
+              requests to work off-platform.
+            - Do not adjust for the number of bids or the client's payment status: code adjusts for those.
             - category: the single best match from the enum.
             - reason: one line explaining the score.
             - client_test_phrase: the exact word or phrase the client asked bidders to include, or null.
