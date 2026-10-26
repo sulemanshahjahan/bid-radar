@@ -7,6 +7,7 @@ use App\Services\CostTracker;
 use App\Services\Freelancer\FreelancerClient;
 use App\Services\Freelancer\Poller;
 use App\Services\Settings;
+use App\Services\SponsorBadge;
 use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
@@ -21,7 +22,7 @@ class ProjectList extends Component
     #[Url]
     public bool $showLow = false;
 
-    public function render(Settings $settings, CostTracker $costs, FreelancerClient $freelancer)
+    public function render(Settings $settings, CostTracker $costs, FreelancerClient $freelancer, SponsorBadge $sponsor)
     {
         $medium = $settings->int('threshold_medium');
 
@@ -39,6 +40,7 @@ class ProjectList extends Component
 
         return view('livewire.project-list', [
             'projects' => $projects,
+            'sponsor' => $sponsor,
             'counts' => Project::query()->where('ai_state', '!=', 'filtered')->selectRaw('status, count(*) as c')->groupBy('status')->pluck('c', 'status'),
             'high' => $high = $settings->int('threshold_high'),
             'medium' => $medium,

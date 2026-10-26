@@ -6,6 +6,7 @@ use App\Models\Project;
 use App\Services\BidTracker;
 use App\Services\CostTracker;
 use App\Services\Settings;
+use App\Services\SponsorBadge;
 use Illuminate\Support\Facades\Http;
 use Throwable;
 
@@ -119,6 +120,9 @@ class Telegram
         ];
         if (! empty($s['reason'])) {
             $lines[] = 'Why: '.$e($s['reason']);
+        }
+        if ($project->exists && app(SponsorBadge::class)->applies($project)) {
+            $lines[] = '💎 <b>Worth sponsoring</b>';
         }
         if (! empty($s['client_test_phrase'])) {
             $lines[] = '⚠️ Client test phrase: <b>"'.$e($s['client_test_phrase']).'"</b>';

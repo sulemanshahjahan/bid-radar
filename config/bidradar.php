@@ -123,6 +123,7 @@ return [
         // Cost and volume
         'daily_spend_cap_usd' => 2.00,
         'weekly_bid_cap' => 50,
+        'sponsor_min_budget_usd' => 100, // "Worth sponsoring" needs a budget top at or above this
         'polling_enabled' => false,
         'poll_interval_minutes' => 2,
         'paused' => false, // Telegram /pause and /resume
