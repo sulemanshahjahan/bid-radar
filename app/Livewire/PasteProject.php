@@ -82,7 +82,9 @@ class PasteProject extends Component
             'exchange_rate' => (float) $this->exchangeRate,
             'bid_count' => $this->bidCount === '' ? null : (int) $this->bidCount,
             'bid_avg' => $num($this->bidAvg),
-            'skills' => array_values(array_filter(array_map('trim', explode(',', $this->skills)))),
+            // Commas, semicolons, pipes, tabs or new lines separate skills. A space-separated line
+            // (as copied from Freelancer) stays one entry; the filter matches skills inside it by word.
+            'skills' => array_values(array_filter(array_map('trim', preg_split('/[,;|\t\r\n]+/', $this->skills)))),
             'client' => array_filter([
                 'payment_verified' => $this->paymentVerified,
                 'rating' => $num($this->clientRating),
