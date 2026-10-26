@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\BidSnapshot;
 use App\Models\Project;
 use App\Services\Settings;
 use Illuminate\Console\Attributes\Description;
@@ -49,6 +50,9 @@ class PurgeProjectData extends Command
                     $wiped++;
                 }
             });
+
+        // Bid history is project data too.
+        BidSnapshot::query()->where('recorded_at', '<', $cutoff)->delete();
 
         $this->info("Deleted {$deleted} projects, wiped data from {$wiped}.");
 

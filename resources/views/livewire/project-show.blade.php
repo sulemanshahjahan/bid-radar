@@ -26,6 +26,15 @@
                 @if (! empty($s['reason']))
                     <p class="mt-1 text-sm text-slate-600">{{ $s['reason'] }}</p>
                 @endif
+                @if (! empty($s['adjustments']))
+                    <p class="mt-1 text-xs text-slate-500">
+                        Base score {{ $s['fit_score'] }}
+                        @foreach ($s['adjustments'] as $a)
+                            · <span class="{{ $a['points'] < 0 ? 'text-red-700' : 'text-emerald-700' }}">{{ $a['points'] > 0 ? '+' : '' }}{{ $a['points'] }} {{ $a['label'] }}</span>
+                        @endforeach
+                        → <span class="font-medium text-slate-700">{{ $score }}</span>
+                    </p>
+                @endif
             </div>
         </div>
 
@@ -41,6 +50,7 @@
             <div>
                 <dt class="text-xs text-slate-500">Bids</dt>
                 <dd class="font-medium">{{ $d['bid_count'] ?? '—' }}{{ ! empty($d['bid_avg']) ? ' · avg '.(float) $d['bid_avg'] : '' }}</dd>
+                @if ($bidsPerHour !== null)<dd class="text-xs text-slate-500">{{ $bidsPerHour }} bids/hr</dd>@endif
             </div>
             <div>
                 <dt class="text-xs text-slate-500">Client</dt>
@@ -54,8 +64,26 @@
             </div>
         </dl>
 
-        @if ($project->url)
-            <a href="{{ $project->url }}" target="_blank" rel="noopener noreferrer" class="btn mt-4 w-full">Open on Freelancer ↗</a>
+        <div class="mt-4 flex gap-2">
+            @if ($project->url)
+                <a href="{{ $project->url }}" target="_blank" rel="noopener noreferrer" class="btn flex-1">Open on Freelancer ↗</a>
+            @endif
+            @if ($canRefresh)
+                <button type="button" wire:click="refresh" wire:loading.attr="disabled" wire:target="refresh" class="btn shrink-0" title="Update bid count and average (one API call)">
+                    <span wire:loading.remove wire:target="refresh">Refresh bids</span>
+                    <span wire:loading wire:target="refresh">Refreshing…</span>
+                </button>
+            @endif
+        </div>
+        @error('refresh') <p class="mt-2 text-xs text-red-600">{{ $message }}</p> @enderror
+        @if (! empty($d['suggested']))
+            <p class="mt-2 text-xs text-slate-600">
+                Suggested bid now: <span class="font-medium text-slate-800">{{ $d['suggested']['currency'] }} {{ (float) $d['suggested']['amount'] }}{{ $d['suggested']['is_hourly'] ? '/hr' : '' }}</span>
+                ({{ $d['suggested']['reason'] }})
+                @if ($draft && (float) $draft->bid_amount !== (float) $d['suggested']['amount']) · draft says {{ (float) $draft->bid_amount }} @endif
+                · refreshed {{ \Illuminate\Support\Carbon::parse($d['suggested']['at'])->diffForHumans() }}
+            </p>
+            @if (! empty($d['suggested']['warning']))<p class="mt-1 text-xs text-amber-700">{{ $d['suggested']['warning'] }}</p>@endif
         @endif
     </div>
 

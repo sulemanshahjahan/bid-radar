@@ -64,7 +64,7 @@ class DraftRulesTest extends TestCase
         $this->assertSame('scored', $project->ai_state);
 
         Livewire::test(ProjectShow::class, ['project' => $project])
-            ->assertSee('Filtered: too many bids (184), new build, 184 bids (limit 100), score 18 (min 50)')
+            ->assertSee('Filtered: too many bids (184), new build, 184 bids (limit 100), score 0 (min 50)') // base 18, -25 for 184 bids
             ->assertSee('Draft anyway')
             ->call('draft') // the plain Draft button must not spend AI on a filtered project
             ->assertSet('projectId', $project->id);

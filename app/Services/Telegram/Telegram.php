@@ -3,6 +3,7 @@
 namespace App\Services\Telegram;
 
 use App\Models\Project;
+use App\Services\BidTracker;
 use App\Services\CostTracker;
 use App\Services\Settings;
 use Illuminate\Support\Facades\Http;
@@ -98,7 +99,9 @@ class Telegram
         if (($d['type'] ?? '') === 'hourly') {
             $budget .= '/hr';
         }
-        $bids = (int) ($d['bid_count'] ?? 0).' bids'.(! empty($d['bid_avg']) ? ' (avg '.$n($d['bid_avg']).')' : '');
+        $rate = $project->exists ? BidTracker::perHour($project) : null;
+        $bids = (int) ($d['bid_count'] ?? 0).' bids'.(! empty($d['bid_avg']) ? ' (avg '.$n($d['bid_avg']).')' : '')
+            .($rate !== null ? ' · '.$rate.'/hr' : '');
         $age = $project->posted_at ? 'posted '.$project->posted_at->diffForHumans(short: true) : '';
 
         $c = $d['client'] ?? [];

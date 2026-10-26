@@ -4,6 +4,7 @@ namespace App\Services\Freelancer;
 
 use App\Jobs\ScoreProject;
 use App\Models\Project;
+use App\Services\BidTracker;
 use App\Services\Settings;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -23,10 +24,14 @@ class Poller
 
     private const SKILL_IDS = 'freelancer:skill_ids';
 
+    /** Projects whose bid counts are still worth following. */
+    private const TRACKED_STATUSES = ['new', 'drafted', 'bid_placed'];
+
     public function __construct(
         private readonly FreelancerClient $client,
         private readonly RulesFilter $rules,
         private readonly Settings $settings,
+        private readonly BidTracker $bids,
     ) {}
 
     /**
@@ -70,14 +75,19 @@ class Poller
             return ['status' => 'error', 'message' => $e->getMessage()];
         }
 
-        $known = Project::query()
-            ->whereIn('freelancer_id', array_map(fn ($p) => (int) ($p['id'] ?? 0), $data['projects']))
-            ->pluck('freelancer_id')->all();
+        $seenIds = array_map(fn ($p) => (int) ($p['id'] ?? 0), $data['projects']);
+        $known = Project::query()->whereIn('freelancer_id', $seenIds)->get()->keyBy('freelancer_id');
 
         $report = [];
         $queued = 0;
         foreach ($data['projects'] as $raw) {
-            if (! isset($raw['id']) || in_array((int) $raw['id'], $known, true)) {
+            if (! isset($raw['id'])) {
+                continue;
+            }
+            if ($known->has((int) $raw['id'])) {
+                // Already stored: the search result carries fresh bid stats for free.
+                $this->trackKnown($known->get((int) $raw['id']), $raw, $dryRun);
+
                 continue;
             }
 
@@ -102,6 +112,7 @@ class Poller
             ]);
 
             if ($reason === null) {
+                $this->bids->record($project, (int) $mapped['details']['bid_count'], $mapped['details']['bid_avg']);
                 ScoreProject::dispatch($project->id);
                 $queued++;
             }
@@ -109,6 +120,7 @@ class Poller
 
         if (! $dryRun) {
             Cache::forever(self::LAST_SUCCESS, now()->getTimestamp());
+            $this->refreshTrackedBids($seenIds);
         }
 
         return [
@@ -116,6 +128,62 @@ class Poller
             'message' => sprintf('%d new, %d sent to scoring%s.', count($report), $dryRun ? 0 : $queued, $dryRun ? ' (dry run, nothing saved)' : ''),
             'projects' => $report,
         ];
+    }
+
+    /** @param array<string, mixed> $raw */
+    private function trackKnown(Project $project, array $raw, bool $dryRun): void
+    {
+        if ($dryRun || ! $this->isTracked($project)) {
+            return;
+        }
+
+        $avg = data_get($raw, 'bid_stats.bid_avg');
+        $this->bids->record($project, (int) data_get($raw, 'bid_stats.bid_count', 0), is_numeric($avg) && (float) $avg > 0 ? (float) $avg : null);
+    }
+
+    /**
+     * One extra request per poll: current bid stats for open projects from the last
+     * 24 hours that this poll's search did not return. A failure here never fails the poll.
+     *
+     * @param  list<int>  $alreadySeen
+     */
+    private function refreshTrackedBids(array $alreadySeen): void
+    {
+        $tracked = Project::query()
+            ->where('source', 'freelancer')
+            ->whereNotNull('freelancer_id')
+            ->whereNotIn('freelancer_id', $alreadySeen)
+            ->whereNull('purged_at')
+            ->where('ai_state', '!=', 'filtered')
+            ->whereIn('status', self::TRACKED_STATUSES)
+            ->where('created_at', '>=', now()->subDay())
+            ->latest('id')
+            ->limit(50)
+            ->get()
+            ->keyBy('freelancer_id');
+
+        if ($tracked->isEmpty()) {
+            return;
+        }
+
+        try {
+            $stats = $this->client->bidStats($tracked->keys()->map(fn ($id) => (int) $id)->all());
+        } catch (FreelancerException $e) {
+            Log::warning('freelancer bid refresh skipped', ['error' => $e->getMessage()]);
+
+            return;
+        }
+
+        foreach ($stats as $id => $s) {
+            if ($project = $tracked->get($id)) {
+                $this->bids->record($project, $s['bid_count'], $s['bid_avg']);
+            }
+        }
+    }
+
+    private function isTracked(Project $project): bool
+    {
+        return $project->purged_at === null && $project->ai_state !== 'filtered' && in_array($project->status, self::TRACKED_STATUSES, true);
     }
 
     /**
