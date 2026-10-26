@@ -19,15 +19,21 @@ class FairScoringTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_scoring_does_not_see_the_bid_count_but_drafting_does(): void
+    public function test_scoring_does_not_see_bid_count_or_payment_status_but_drafting_does(): void
     {
         $project = $this->makeProject([], ['bid_count' => 12, 'bid_avg' => 112]);
         $this->claude->reply($this->scoringReply(['fit_score' => 90]))->reply($this->draftReply(), 'claude-sonnet-5-5');
 
         ScoreProject::dispatchSync($project->id);
 
-        $this->assertStringNotContainsString('Bids so far', $this->claude->requests[0]->userContent);
-        $this->assertStringContainsString('Bids so far: 12', $this->claude->requests[1]->userContent);
+        $scoring = $this->claude->requests[0]->userContent;
+        $this->assertStringNotContainsString('Bids so far', $scoring);
+        $this->assertStringNotContainsString('payment', $scoring);
+        $this->assertStringContainsString('Client: rating 4.8, country US', $scoring);
+
+        $drafting = $this->claude->requests[1]->userContent;
+        $this->assertStringContainsString('Bids so far: 12', $drafting);
+        $this->assertStringContainsString('payment verified', $drafting);
     }
 
     public function test_a_live_project_found_in_its_first_minutes_has_no_bid_penalty_until_it_ages(): void

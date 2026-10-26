@@ -36,7 +36,7 @@ class Scorer
             system: [
                 ['text' => $this->instructions(), 'cache' => true],
             ],
-            userContent: "Score this project.\n\n".ProjectBrief::render($project, bids: false),
+            userContent: "Score this project.\n\n".ProjectBrief::render($project, forScoring: true),
             schema: self::schema((bool) $this->settings->get('rank_rebuild')),
             effort: $this->settings->get('scoring_effort', 'low'),
             maxTokens: 4000,

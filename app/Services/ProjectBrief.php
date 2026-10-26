@@ -20,8 +20,8 @@ class ProjectBrief
         (for example "start your bid with the word BLUE"), treat that phrase as a requirement.
         TXT;
 
-    /** @param  bool  $bids  Scoring leaves bid counts out: code adjusts for them (ScoreAdjuster). */
-    public static function render(Project $project, bool $bids = true): string
+    /** @param  bool  $forScoring  leaves out bid counts and payment status: code adjusts for those (ScoreAdjuster). */
+    public static function render(Project $project, bool $forScoring = false): string
     {
         $d = $project->details ?? [];
         $currency = $d['currency'] ?? 'USD';
@@ -32,7 +32,7 @@ class ProjectBrief
         if (($d['exchange_rate'] ?? 1) != 1) {
             $lines[] = 'Exchange rate: 1 '.$currency.' = '.$d['exchange_rate'].' USD';
         }
-        if ($bids) {
+        if (! $forScoring) {
             $lines[] = 'Bids so far: '.(isset($d['bid_count']) ? (int) $d['bid_count'] : 'unknown')
                 .(! empty($d['bid_avg']) ? ' (average '.$currency.' '.self::num($d['bid_avg']).')' : '');
         }
@@ -42,7 +42,7 @@ class ProjectBrief
         if (! empty($d['client'])) {
             $c = $d['client'];
             $lines[] = 'Client: '.implode(', ', array_filter([
-                isset($c['payment_verified']) ? ($c['payment_verified'] ? 'payment verified' : 'payment NOT verified') : null,
+                ! $forScoring && isset($c['payment_verified']) ? ($c['payment_verified'] ? 'payment verified' : 'payment NOT verified') : null,
                 ! empty($c['rating']) ? 'rating '.$c['rating'] : null,
                 ! empty($c['reviews']) ? $c['reviews'].' reviews' : null,
                 ! empty($c['country']) ? 'country '.$c['country'] : null,
