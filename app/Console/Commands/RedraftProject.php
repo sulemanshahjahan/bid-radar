@@ -6,6 +6,7 @@ use App\Models\Project;
 use App\Services\CostTracker;
 use App\Services\DraftGate;
 use App\Services\Drafting\Drafter;
+use App\Services\ScoreAdjuster;
 use App\Services\Scoring\Scorer;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -16,7 +17,7 @@ use Throwable;
 #[Description('Re-score one project and draft it again, printing the warning, price, delivery and proposal')]
 class RedraftProject extends Command
 {
-    public function handle(Scorer $scorer, Drafter $drafter, DraftGate $gate, CostTracker $costs): int
+    public function handle(Scorer $scorer, Drafter $drafter, DraftGate $gate, CostTracker $costs, ScoreAdjuster $adjuster): int
     {
         $project = Project::query()->find($this->argument('project'));
         if ($project === null || $project->purged_at !== null || ! $project->description) {
@@ -32,9 +33,10 @@ class RedraftProject extends Command
 
             return self::FAILURE;
         }
-        $project->update(['scoring' => $result, 'fit_score' => $result['fit_score'], 'category' => $result['category'], 'ai_state' => 'scored']);
+        $adjusted = $adjuster->adjust($result, $project->details ?? []);
+        $project->update(['scoring' => array_merge($result, ['adjustments' => $adjusted['adjustments']]), 'fit_score' => $adjusted['score'], 'category' => $result['category'], 'ai_state' => 'scored']);
 
-        $this->line("Score: {$result['fit_score']} · ".config('bidradar.categories.'.$result['category'])
+        $this->line("Score: {$adjusted['score']} (base {$result['fit_score']}) · ".config('bidradar.categories.'.$result['category'])
             .' · estimated '.($result['estimated_hours'] ?? '?').' hours');
 
         if ($message = $gate->message($project)) {

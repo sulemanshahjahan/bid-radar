@@ -6,8 +6,12 @@ use App\Jobs\DraftProject;
 use App\Models\Draft;
 use App\Models\Project;
 use App\Models\WinningExample;
+use App\Services\BidTracker;
 use App\Services\CostTracker;
 use App\Services\DraftGate;
+use App\Services\Drafting\PricingCalculator;
+use App\Services\Freelancer\FreelancerClient;
+use App\Services\Freelancer\FreelancerException;
 use App\Services\Settings;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
@@ -82,6 +86,56 @@ class ProjectShow extends Component
         $this->instruction = '';
     }
 
+    /**
+     * One API call: current bid count and average, then the adjusted score and the
+     * suggested bid are recalculated (existing pricing rules; any draft is untouched).
+     */
+    public function refresh(FreelancerClient $client, BidTracker $bids, PricingCalculator $pricing): void
+    {
+        $project = $this->project();
+        if (config('bidradar.freelancer.polling_enabled') !== true) {
+            $this->addError('refresh', 'Refresh needs Freelancer API access (FREELANCER_POLLING_ENABLED=true).');
+
+            return;
+        }
+        if ($project->purged_at !== null) {
+            $this->addError('refresh', 'This project\'s data was deleted after 24 hours.');
+
+            return;
+        }
+
+        $seo = $project->url ? trim((string) preg_replace('#^.*?/projects/#', '', (string) parse_url($project->url, PHP_URL_PATH)), '/') : '';
+
+        try {
+            $stats = match (true) {
+                $project->freelancer_id !== null => $client->bidStats([(int) $project->freelancer_id], 'refresh')[(int) $project->freelancer_id] ?? null,
+                $seo !== '' => $client->bidStatsBySeoUrl($seo),
+                default => throw new FreelancerException('No Freelancer link on this project to refresh from.'),
+            };
+        } catch (FreelancerException $e) {
+            $this->addError('refresh', $e->getMessage());
+
+            return;
+        }
+
+        if ($stats === null) {
+            $this->addError('refresh', 'Freelancer did not return this project (it may be closed).');
+
+            return;
+        }
+
+        $bids->record($project, $stats['bid_count'], $stats['bid_avg']);
+        $project->refresh();
+
+        $hours = $project->score('estimated_hours');
+        $price = $pricing->price($project->details ?? [], is_numeric($hours) ? (int) $hours : null);
+        $details = $project->details;
+        $details['suggested'] = $price + ['at' => now()->toIso8601String()];
+        $project->forceFill(['details' => $details])->save();
+
+        $this->dispatch('copied', 'Refreshed: '.$stats['bid_count'].' bids');
+    }
+
     public function markBidPlaced(): void
     {
         $this->validate(['myBid' => 'required|numeric|gt:0']);
@@ -130,6 +184,8 @@ class ProjectShow extends Component
             'medium' => $settings->int('threshold_medium'),
             'capReached' => $costs->capReached(),
             'filtered' => $gate->message($project),
+            'bidsPerHour' => BidTracker::perHour($project),
+            'canRefresh' => config('bidradar.freelancer.polling_enabled') === true && $project->purged_at === null && ($project->freelancer_id !== null || $project->url !== null),
             'versions' => $project->drafts()->count(),
         ])->title($project->displayTitle());
     }

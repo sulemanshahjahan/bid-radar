@@ -64,6 +64,55 @@ class FreelancerClient
     }
 
     /**
+     * Current bid stats for up to 50 known projects in ONE request (List Projects, projects[] filter).
+     *
+     * @param  list<int>  $ids
+     * @return array<int, array{bid_count: int, bid_avg: float|null}> keyed by project ID
+     */
+    public function bidStats(array $ids, string $purpose = 'bids'): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        $result = $this->get('projects/0.1/projects/', $purpose, ['projects[]' => array_slice(array_values($ids), 0, 50), 'limit' => 50]);
+
+        return self::statsFrom($result['projects'] ?? []);
+    }
+
+    /**
+     * Bid stats for one pasted project found by its link (seo_url), in ONE request.
+     *
+     * @return array{bid_count: int, bid_avg: float|null}|null
+     */
+    public function bidStatsBySeoUrl(string $seoUrl): ?array
+    {
+        $result = $this->get('projects/0.1/projects/', 'refresh', ['seo_urls[]' => $seoUrl, 'limit' => 1]);
+
+        return array_values(self::statsFrom($result['projects'] ?? []))[0] ?? null;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $projects
+     * @return array<int, array{bid_count: int, bid_avg: float|null}>
+     */
+    private static function statsFrom(array $projects): array
+    {
+        $out = [];
+        foreach ($projects as $p) {
+            if (isset($p['id'])) {
+                $avg = data_get($p, 'bid_stats.bid_avg');
+                $out[(int) $p['id']] = [
+                    'bid_count' => (int) data_get($p, 'bid_stats.bid_count', 0),
+                    'bid_avg' => is_numeric($avg) && (float) $avg > 0 ? (float) $avg : null,
+                ];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * Look up job (skill) IDs by name.
      *
      * @param  list<string>  $names

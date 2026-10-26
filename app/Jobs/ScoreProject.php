@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\Project;
 use App\Services\DraftGate;
 use App\Services\Freelancer\RulesFilter;
+use App\Services\ScoreAdjuster;
 use App\Services\Scoring\Scorer;
 use App\Services\Settings;
 use App\Services\Telegram\Telegram;
@@ -22,7 +23,7 @@ class ScoreProject implements ShouldQueue
 
     public function __construct(public readonly int $projectId) {}
 
-    public function handle(Scorer $scorer, Settings $settings, Telegram $telegram, DraftGate $gate): void
+    public function handle(Scorer $scorer, Settings $settings, Telegram $telegram, DraftGate $gate, ScoreAdjuster $adjuster): void
     {
         $project = Project::query()->find($this->projectId);
         if ($project === null || $project->purged_at !== null) {
@@ -39,15 +40,17 @@ class ScoreProject implements ShouldQueue
             return;
         }
 
+        // scoring['fit_score'] keeps the AI's base score; fit_score is the adjusted one every threshold uses.
+        $adjusted = $adjuster->adjust($result, $project->details ?? []);
         $project->update([
-            'scoring' => $result,
-            'fit_score' => $result['fit_score'],
+            'scoring' => array_merge($result, ['adjustments' => $adjusted['adjustments']]),
+            'fit_score' => $adjusted['score'],
             'category' => $result['category'],
             'ai_state' => 'scored',
         ]);
 
-        $high = $result['fit_score'] >= $settings->int('threshold_high');
-        $medium = $result['fit_score'] >= $settings->int('threshold_medium');
+        $high = $adjusted['score'] >= $settings->int('threshold_high');
+        $medium = $adjusted['score'] >= $settings->int('threshold_medium');
         $live = $project->source === 'freelancer';
 
         // Filtered projects (rules, new build with too many bids, low score) are never drafted
