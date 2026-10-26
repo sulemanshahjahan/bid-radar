@@ -79,6 +79,21 @@ class RulesFilterTest extends TestCase
         $this->assertNull(RulesFilter::paymentWarning($this->fixture()[101]['details']));
     }
 
+    public function test_target_skills_match_inside_a_space_separated_skills_line(): void
+    {
+        $p = $this->fixture()[101];
+
+        $p['details']['skills'] = ['PHP Joomla WordPress MySQL HTML Software Development Laravel Web Development'];
+        $this->assertNull($this->reject($p));
+
+        $p['details']['skills'] = ['Logo Design Illustration Photoshop'];
+        $this->assertSame('No target skill', $this->reject($p));
+
+        // Whole words only: "PHPStorm" is not "PHP".
+        $p['details']['skills'] = ['PHPStorm Graphic Design'];
+        $this->assertSame('No target skill', $this->reject($p));
+    }
+
     public function test_keywords_match_whole_words_only(): void
     {
         $this->assertSame('AI', RulesFilter::firstMatch(['AI'], 'Add an AI chatbot'));

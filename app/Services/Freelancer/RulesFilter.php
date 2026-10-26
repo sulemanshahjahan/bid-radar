@@ -22,9 +22,11 @@ class RulesFilter
         $text = $mapped['title']."\n".$mapped['description'];
         $now ??= now()->getTimestamp();
 
-        $targets = array_map('mb_strtolower', $this->settings->list('target_skills'));
-        $skills = array_map('mb_strtolower', $d['skills']);
-        if ($targets !== [] && ($requireSkill || $skills !== []) && array_intersect($skills, $targets) === []) {
+        // Target skills match as whole words/phrases, so "PHP" counts in a pasted line like
+        // "PHP Joomla WordPress MySQL". Live projects list one skill per entry; same result.
+        $targets = $this->settings->list('target_skills');
+        $skills = (array) $d['skills'];
+        if ($targets !== [] && ($requireSkill || $skills !== []) && self::firstMatch($targets, implode(' | ', $skills)) === null) {
             return 'No target skill';
         }
 

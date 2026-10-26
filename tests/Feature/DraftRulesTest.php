@@ -318,6 +318,31 @@ class DraftRulesTest extends TestCase
         $this->assertSame(300.0, (float) $draft->bid_amount);
     }
 
+    // --- Pasted skills ----------------------------------------------------------
+
+    public function test_pasted_skills_are_split_and_a_space_separated_line_still_matches(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $paste = function (string $skills): Project {
+            $this->claude->reply($this->scoringReply());
+            Livewire::test(PasteProject::class)
+                ->set('description', 'Fix my WooCommerce checkout, it spins forever after the last update.')
+                ->set('budgetMin', 100)->set('budgetMax', 200)
+                ->set('skills', $skills)
+                ->call('save');
+
+            return Project::query()->latest('id')->first();
+        };
+
+        $this->assertSame(['WooCommerce', 'PHP', 'MySQL'], $paste("WooCommerce, PHP\nMySQL")->detail('skills'));
+
+        $line = $paste('PHP Joomla WordPress MySQL HTML Software Development Laravel Web Development');
+        $this->assertSame(['PHP Joomla WordPress MySQL HTML Software Development Laravel Web Development'], $line->detail('skills'));
+        $this->assertNull($line->filter_reason, 'Not "No target skill": PHP, WordPress and MySQL are in the line.');
+
+        $this->assertSame('No target skill', $paste('Logo Design, Illustration')->filter_reason);
+    }
+
     // --- Unverified payment: a warning, not a skip ----------------------------
 
     public function test_unverified_client_is_scored_and_shown_but_not_drafted(): void
