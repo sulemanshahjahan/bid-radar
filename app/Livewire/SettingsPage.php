@@ -10,6 +10,7 @@ use App\Services\Scoring\Scorer;
 use App\Services\Settings;
 use App\Services\Telegram\Telegram;
 use Illuminate\Support\Facades\Cache;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
@@ -34,21 +35,48 @@ class SettingsPage extends Component
         'services_offered', 'services_not_offered', 'turnaround_notes', 'style_notes',
     ];
 
+    /** More filled-in fields than this going blank in one save means the form state is broken, not edited. */
+    private const MAX_BLANKED_PER_SAVE = 3;
+
     /** @var array<string, mixed> */
     public array $form = [];
+
+    /** The form as loaded on mount (or last save). save() only writes fields that differ from it. */
+    #[Locked]
+    public array $original = [];
 
     /** @var array{id: int|null, category: string, problem: string, what_i_did: string, result: string} */
     public array $past = ['id' => null, 'category' => 'fix', 'problem' => '', 'what_i_did' => '', 'result' => ''];
 
     public function mount(Settings $settings): void
     {
+        $defaults = config('bidradar.defaults');
         foreach ($settings->all() as $key => $value) {
+            $value ??= $defaults[$key] ?? null; // a stored null must not hide the default
             $this->form[$key] = in_array($key, self::LISTS, true) ? implode("\n", (array) $value) : $value;
         }
+        $this->original = $this->form;
     }
 
     public function save(Settings $settings): void
     {
+        // Only fields the user changed are saved. A field missing from the form state keeps its saved value.
+        $changed = [];
+        foreach ($this->original as $key => $old) {
+            if (array_key_exists($key, $this->form) && $this->normalise($key, $this->form[$key]) !== $this->normalise($key, $old)) {
+                $changed[$key] = $this->form[$key];
+            }
+        }
+        $this->form = array_merge($this->original, $changed);
+
+        $blanked = array_filter(array_keys($changed), fn (string $key) => ! in_array($key, self::BOOLEANS, true)
+            && $this->isBlank($changed[$key]) && ! $this->isBlank($this->original[$key]));
+        if (count($blanked) > self::MAX_BLANKED_PER_SAVE) {
+            $this->addError('form', 'Nothing was saved: '.count($blanked).' filled-in fields would have been cleared at once. Reload the page and try again.');
+
+            return;
+        }
+
         $efforts = 'in:low,medium,high,xhigh,max';
         $this->validate([
             'form.min_budget_usd' => 'required|numeric|min:0',
@@ -78,25 +106,62 @@ class SettingsPage extends Component
         ]);
 
         $values = [];
-        foreach (self::LISTS as $key) {
-            $values[$key] = array_values(array_filter(array_map('trim', preg_split('/\R/', (string) ($this->form[$key] ?? ''))), 'strlen'));
+        foreach (array_keys($changed) as $key) {
+            $value = $this->form[$key];
+            if (in_array($key, self::LISTS, true)) {
+                $values[$key] = $this->toList($value);
+            } elseif (in_array($key, self::NUMBERS, true)) {
+                $values[$key] = $this->toNumber($value);
+            } elseif (in_array($key, self::BOOLEANS, true)) {
+                $values[$key] = (bool) $value;
+            } elseif (in_array($key, self::TEXTS, true)) {
+                $values[$key] = trim((string) $value);
+            }
         }
-        foreach (self::NUMBERS as $key) {
-            $values[$key] = (float) $this->form[$key] == (int) $this->form[$key] ? (int) $this->form[$key] : (float) $this->form[$key];
-        }
-        foreach (self::BOOLEANS as $key) {
-            $values[$key] = (bool) ($this->form[$key] ?? false);
-        }
-        // Hard rule: polling stays off until FREELANCER_POLLING_ENABLED=true (written permission).
-        if (config('bidradar.freelancer.polling_enabled') !== true) {
-            $values['polling_enabled'] = false;
-        }
-        foreach (self::TEXTS as $key) {
-            $values[$key] = trim((string) ($this->form[$key] ?? ''));
+        // Hard rule: polling is never switched ON without FREELANCER_POLLING_ENABLED=true (written permission).
+        // Otherwise it keeps exactly its saved value.
+        if (($values['polling_enabled'] ?? false) === true && config('bidradar.freelancer.polling_enabled') !== true) {
+            unset($values['polling_enabled']);
+            $this->form['polling_enabled'] = $this->original['polling_enabled'];
         }
 
-        $settings->set($values);
+        if ($values !== []) {
+            $settings->set($values);
+        }
+        $this->original = $this->form;
         $this->dispatch('copied', 'Settings saved');
+    }
+
+    /** Compare form values the way they will be saved, so "25" and 25 or "1.0" and 1 count as unchanged. */
+    private function normalise(string $key, mixed $value): mixed
+    {
+        if (in_array($key, self::LISTS, true)) {
+            return $this->toList(is_array($value) ? implode("\n", $value) : $value);
+        }
+        if (in_array($key, self::NUMBERS, true)) {
+            return is_numeric($value) ? (float) $value : trim((string) $value);
+        }
+        if (in_array($key, self::BOOLEANS, true)) {
+            return (bool) $value;
+        }
+
+        return trim((string) $value);
+    }
+
+    private function isBlank(mixed $value): bool
+    {
+        return is_array($value) ? $value === [] : trim((string) $value) === '';
+    }
+
+    /** @return list<string> */
+    private function toList(mixed $value): array
+    {
+        return array_values(array_filter(array_map('trim', preg_split('/\R/', (string) $value)), 'strlen'));
+    }
+
+    private function toNumber(mixed $value): int|float
+    {
+        return (float) $value == (int) $value ? (int) $value : (float) $value;
     }
 
     public function editPast(int $id): void
