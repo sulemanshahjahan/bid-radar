@@ -92,6 +92,19 @@ class RankRebuildTest extends TestCase
             ->assertSee('+10 client 4.8+ with 3+ projects');
     }
 
+    public function test_the_ai_is_told_not_to_penalise_bids_or_payment_which_code_already_adjusts(): void
+    {
+        $project = $this->makeProject();
+        $this->claude->reply($this->scoringReply());
+
+        app(Scorer::class)->score($project);
+
+        $prompt = $this->claude->requests[0]->system[0]['text'];
+        $this->assertStringNotContainsString('very high bid counts', $prompt);
+        $this->assertStringNotContainsString('unverified payment', $prompt);
+        $this->assertStringContainsString('Do not adjust for the number of bids or the client\'s payment status', $prompt);
+    }
+
     public function test_the_mode_is_a_settings_checkbox(): void
     {
         $this->actingAs(User::factory()->create());
