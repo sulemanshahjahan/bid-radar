@@ -84,6 +84,14 @@ class PostChecker
             $failures[] = "Talks down the freelancer's experience (\"{$phrase}\").";
         }
 
+        if ($phrase = self::linkRestrictionPhrase($text)) {
+            $failures[] = "Says links can't be shared (\"{$phrase}\"); point to the Freelancer portfolio or offer samples in chat instead.";
+        }
+
+        if ($fragment = self::statsFragment($text)) {
+            $failures[] = "Stats written as a fragment (\"{$fragment}\"); work them into a sentence.";
+        }
+
         if ($factBankText !== null && ($extra = self::inventedExtra($text, $factBankText))) {
             $failures[] = "Offers an extra that is not in the fact bank (\"{$extra}\").";
         }
@@ -230,6 +238,24 @@ class PostChecker
         $keyword = strtolower(rtrim($kw[0] ?? '', 's'));
 
         return $keyword !== '' && mb_stripos($factBankText, $keyword) !== false ? null : trim($m[0]);
+    }
+
+    /** "Links aren't allowed in bids" and similar: draws attention to a limit instead of giving proof. */
+    public static function linkRestrictionPhrase(string $text): ?string
+    {
+        $pattern = '/\b(?:links?|urls?|portfolio links?)\s+(?:are|is)(?:n\'t| not)\s+(?:allowed|permitted)\b'
+            .'|\b(?:I\s+)?(?:can\'t|cannot|can not)\s+(?:share|include|send|post|add)\s+(?:a\s+|any\s+)?(?:links?|urls?)\b'
+            .'|\bno\s+links?\s+(?:are\s+)?(?:allowed|permitted)\b/iu';
+
+        return preg_match($pattern, $text, $m) ? $m[0] : null;
+    }
+
+    /** A stats line with no verb, like "Rating 4.9 from 409 reviews." standing alone. */
+    public static function statsFragment(string $text): ?string
+    {
+        $pattern = '/(?:^|[.?!]\s+|\n)\s*((?:Rating|Rated)\s+[\d.]+(?:\s*\/\s*5)?\s+(?:from|with|on|across)\s+[\d,]+\s+reviews?\.?)\s*(?=$|\n)/imu';
+
+        return preg_match($pattern, $text, $m) ? trim($m[1]) : null;
     }
 
     /** First phrase that puts down the freelancer's experience or argues against hiring them. */

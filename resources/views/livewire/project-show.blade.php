@@ -216,6 +216,14 @@
         @if (! empty($s['brief_summary']))
             <p class="text-sm text-slate-700">{{ $s['brief_summary'] }}</p>
         @endif
+        @if (! empty($s['client_requirements']))
+            <div class="text-sm">
+                <p class="font-medium text-slate-700">Client asks every proposal to</p>
+                <ul class="mt-1 list-disc pl-5 text-slate-600">
+                    @foreach ($s['client_requirements'] as $r) <li>{{ $r }}</li> @endforeach
+                </ul>
+            </div>
+        @endif
         @if (! empty($s['client_questions']))
             <div class="text-sm">
                 <p class="font-medium text-slate-700">Client's questions</p>
