@@ -28,7 +28,7 @@ class SettingsPage extends Component
         'word_min', 'word_max', 'poll_interval_minutes',
     ];
 
-    private const BOOLEANS = ['quiet_alerts', 'polling_enabled', 'paused'];
+    private const BOOLEANS = ['quiet_alerts', 'polling_enabled', 'paused', 'rank_rebuild'];
 
     private const TEXTS = [
         'scoring_model', 'scoring_effort', 'drafting_model', 'drafting_effort',

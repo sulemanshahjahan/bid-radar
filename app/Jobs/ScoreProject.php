@@ -41,7 +41,7 @@ class ScoreProject implements ShouldQueue
         }
 
         // scoring['fit_score'] keeps the AI's base score; fit_score is the adjusted one every threshold uses.
-        $adjusted = $adjuster->adjust($result, $project->details ?? []);
+        $adjusted = $adjuster->adjust($result, $project->details ?? [], $project->title."\n".$project->description);
         $project->update([
             'scoring' => array_merge($result, ['adjustments' => $adjusted['adjustments']]),
             'fit_score' => $adjusted['score'],

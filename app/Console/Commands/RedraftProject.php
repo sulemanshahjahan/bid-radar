@@ -33,7 +33,7 @@ class RedraftProject extends Command
 
             return self::FAILURE;
         }
-        $adjusted = $adjuster->adjust($result, $project->details ?? []);
+        $adjusted = $adjuster->adjust($result, $project->details ?? [], $project->title."\n".$project->description);
         $project->update(['scoring' => array_merge($result, ['adjustments' => $adjusted['adjustments']]), 'fit_score' => $adjusted['score'], 'category' => $result['category'], 'ai_state' => 'scored']);
 
         $this->line("Score: {$adjusted['score']} (base {$result['fit_score']}) · ".config('bidradar.categories.'.$result['category'])

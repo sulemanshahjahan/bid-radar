@@ -112,6 +112,7 @@ return [
         'threshold_high' => 75,
         'threshold_medium' => 50,
         'quiet_alerts' => false,
+        'rank_rebuild' => false, // extra score adjustments to rebuild ranking with quick wins
 
         // Models
         'scoring_model' => 'claude-haiku-5-5',
