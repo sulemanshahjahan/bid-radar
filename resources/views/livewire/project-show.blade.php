@@ -200,6 +200,30 @@
 
             <p class="text-xs text-slate-500">Price: {{ $draft->price_reason }}</p>
 
+            @php($strategy = $draft->strategy ?? [])
+            @if (! empty($strategy['hook_type']) || isset($strategy['quality']))
+                <details class="text-sm">
+                    <summary class="cursor-pointer text-xs text-slate-500">
+                        Opening: {{ \App\Services\Drafting\ProposalQuality::hookLabel($strategy['hook_type'] ?? null) ?? 'not recorded' }}
+                        @isset($strategy['quality']) · self-review {{ $strategy['quality'] }}/100 @endisset
+                        @if (($strategy['revised'] ?? null) === 'quality') · revised once @endif
+                    </summary>
+                    <div class="mt-2 space-y-2 text-xs text-slate-600">
+                        <p class="text-slate-400">The self-review is the model rating its own draft, not a prediction of winning. Real results are on the Stats page.</p>
+                        @if (! empty($strategy['recommendation'])) <p><span class="font-medium">Recommends:</span> {{ $strategy['recommendation'] }}</p> @endif
+                        @if (! empty($strategy['proof'])) <p><span class="font-medium">Proof used:</span> {{ $strategy['proof'] }}</p> @endif
+                        @if (! empty($strategy['instructions']))
+                            <div>
+                                <p class="font-medium">Client instructions</p>
+                                <ul class="list-disc pl-5">
+                                    @foreach ($strategy['instructions'] as $i) <li>{{ $i['instruction'] }}: {{ $i['how_met'] }}</li> @endforeach
+                                </ul>
+                            </div>
+                        @endif
+                    </div>
+                </details>
+            @endif
+
             @if (! empty($draft->questions_to_ask_later))
                 <div class="text-sm">
                     <p class="font-medium text-slate-700">Ask after award</p>

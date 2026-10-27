@@ -29,18 +29,43 @@ class PostChecker
      * @param  string  $sourceText  Fact bank + brief: the only allowed source of numbers.
      * @param  string|null  $briefText  The client's brief alone: the only allowed source of a proposed stack.
      * @param  string|null  $factBankText  The fact bank alone: the only allowed source of extras like free support.
+     * @param  array{word_min?: int, word_max?: int, client_word_limit?: int|null, phrase_opens?: bool}  $rules  Per-draft limits (ProposalLength, ClientInstructions); Settings when absent.
      * @return list<string>
      */
-    public function check(array $draft, ?string $testPhrase, string $sourceText, float $minimumBid = 0, ?string $briefText = null, ?string $factBankText = null): array
+    public function check(array $draft, ?string $testPhrase, string $sourceText, float $minimumBid = 0, ?string $briefText = null, ?string $factBankText = null, array $rules = []): array
     {
         $text = (string) ($draft['proposal_text'] ?? '');
         $failures = [];
 
         $words = self::wordCount($text);
-        $min = $this->settings->int('word_min');
-        $max = $this->settings->int('word_max');
-        if ($words < $min || $words > $max) {
-            $failures[] = "Word count is {$words}; must be {$min}-{$max}.";
+        $min = $rules['word_min'] ?? $this->settings->int('word_min');
+        $max = $rules['word_max'] ?? $this->settings->int('word_max');
+        if (! empty($rules['client_word_limit']) && $words > $rules['client_word_limit']) {
+            $failures[] = "Word count is {$words}; the client asked for at most {$rules['client_word_limit']} words.";
+        } elseif ($words < $min || $words > $max) {
+            $failures[] = "Word count is {$words}; must be {$min}-{$max} for this job.";
+        }
+
+        if (! empty($rules['phrase_opens']) && $testPhrase && ! ClientInstructions::opensWith($text, $testPhrase)) {
+            $failures[] = "Must begin with the client's required phrase \"{$testPhrase}\", before anything else.";
+        }
+
+        $failures = array_merge($failures, self::genericLanguage($text, $testPhrase));
+
+        if ($phrase = self::overpromise($text, (string) $factBankText)) {
+            $failures[] = "Promises more than can be known before looking at the site (\"{$phrase}\").";
+        }
+        if ($phrase = self::unsupportedClaim($text)) {
+            $failures[] = "Makes a general claim or statistic with no source (\"{$phrase}\").";
+        }
+        if ($factBankText !== null && ($phrase = self::unverifiedAvailability($text, $factBankText))) {
+            $failures[] = "Claims availability the fact bank does not state (\"{$phrase}\").";
+        }
+        if ($phrase = self::conflictingDelivery($text, $draft['delivery_days'] ?? null)) {
+            $failures[] = "Delivery in the text (\"{$phrase}\") differs from the bid's delivery time.";
+        }
+        if (self::stepList($text)) {
+            $failures[] = 'Reads like a step list (First... Then... Finally...); describe the work in a sentence or two.';
         }
 
         foreach ($this->settings->list('banned_phrases') as $phrase) {
@@ -238,6 +263,98 @@ class PostChecker
         $keyword = strtolower(rtrim($kw[0] ?? '', 's'));
 
         return $keyword !== '' && mb_stripos($factBankText, $keyword) !== false ? null : trim($m[0]);
+    }
+
+    /** Filler that claims expertise instead of showing it. Always checked, on top of the Settings banned list. */
+    private const GENERIC_PHRASES = [
+        'as an accomplished', 'ideal candidate', 'perfect candidate', 'suitable candidate', 'perfect fit for',
+        'wealth of experience', 'fundamental skills', 'necessary skills', 'I possess', 'rest easy', 'rest assured',
+        'work tirelessly', 'passionate about', 'bring your vision to life', 'in safe hands', 'I would be delighted',
+        "I'd be delighted", 'highest quality', 'I understand the importance', 'TLC', 'my expertise allows',
+        'look forward to working with you', "I'd love to work", 'I would love to work', 'sounds interesting',
+        'state-of-the-art', 'above and beyond', 'exceed your expectations', 'tailored to your needs',
+        'I am confident that I', "I'm confident that I", 'I believe I can', 'I think I might',
+    ];
+
+    /** Openings that read like a routine application. Checked on the first sentence after any required phrase. */
+    private const GENERIC_OPENER = '/^(?:(?:hi|hello|hey)(?: there)?[,.!]?\s+)?(?:I understand (?:that )?you(?:\'re| are)? (?:need|looking|want)|I can help(?: you)? with|I have (?:experience|worked)|I\'ve (?:got )?experience|For your project|As an? (?:experienced|accomplished|skilled|expert|professional)|I(?:\'d| would) love to|Your project (?:sounds|looks|is) (?:interesting|great)|I am writing|I\'m writing|Thank(?:s| you) for (?:posting|sharing)|I(?: have|\'ve)? read your|I am (?:a|an) |I\'m (?:a|an) )/iu';
+
+    /** @return list<string> */
+    public static function genericLanguage(string $text, ?string $testPhrase = null): array
+    {
+        $out = [];
+        foreach (self::GENERIC_PHRASES as $phrase) {
+            if (preg_match('/(?<![\p{L}])'.preg_quote($phrase, '/').'(?![\p{L}])/iu', $text)) {
+                $out[] = "Generic filler (\"{$phrase}\"); show the expertise instead.";
+            }
+        }
+
+        $opening = ltrim($text);
+        if ($testPhrase && ClientInstructions::opensWith($opening, $testPhrase)) {
+            $opening = ltrim(preg_replace('/^[^\p{L}\p{N}]*'.preg_quote(trim($testPhrase, " .,!\"'"), '/').'[^\p{L}\p{N}]*/iu', '', $opening));
+        }
+        if (preg_match(self::GENERIC_OPENER, $opening, $m)) {
+            $out[] = 'Generic opening ("'.trim($m[0]).'..."); open with the client\'s problem, a recommendation or a diagnosis.';
+        }
+
+        return $out;
+    }
+
+    /** Guarantees and certainty nobody has before seeing the site. A guarantee in the fact bank is allowed. */
+    public static function overpromise(string $text, string $factBankText = ''): ?string
+    {
+        $pattern = '/\bguarantee[sd]?\b|\b100\s?%|\bI (?:already )?know exactly (?:what|why)\b|\bdefinitely (?:fix|solve)\b|\bno matter what\b|\bwithin minutes\b|\bwill never (?:break|fail|happen)\b/iu';
+        if (! preg_match($pattern, $text, $m)) {
+            return null;
+        }
+
+        return stripos($m[0], 'guarantee') !== false && stripos($factBankText, 'guarantee') !== false ? null : $m[0];
+    }
+
+    /** Invented statistics and sweeping claims ("most membership sites fail"), and put-downs of other bidders. */
+    public static function unsupportedClaim(string $text): ?string
+    {
+        $pattern = '/\b(?:most|many|the majority of|\d+\s?%\s+of)\s+(?:[\w-]+\s+){0,3}?(?:sites|websites|stores|shops|businesses|owners|projects|checkouts|customers|users|visitors|carts)\s+(?:fail|lose|leak|abandon|never|break|struggle)\w*\b'
+            .'|\b(?:studies|research|data) (?:show|shows|suggest|suggests)\b|\bstatistic(?:s|ally)\b'
+            .'|\b(?:most|other|many) (?:freelancers|developers|bidders)\b/iu';
+
+        return preg_match($pattern, $text, $m) ? $m[0] : null;
+    }
+
+    /** "I can start today", "same-day delivery": only when the fact bank's availability notes say so. */
+    public static function unverifiedAvailability(string $text, string $factBankText): ?string
+    {
+        $pattern = '/\b(?:start|begin|available|availability|free)\b[^.?!]{0,25}?\b(?:today|tonight|now|immediately|right away|straight away)\b|\bsame[- ]day\b|\bimmediately available\b/iu';
+        if (! preg_match($pattern, $text, $m)) {
+            return null;
+        }
+
+        return preg_match('/\b(?:today|same[- ]day|immediately|right away|straight away|start now)\b/iu', $factBankText) ? null : $m[0];
+    }
+
+    /** A delivery time in the text that is not the bid's delivery time ("deliver within 5 days" on a 1-day bid). */
+    public static function conflictingDelivery(string $text, mixed $deliveryDays): ?string
+    {
+        // Future delivery wording only, so past work from the fact bank ("finished it in 2 days") is not caught.
+        $pattern = '/\b(?:deliver(?:y|ing)?|turnaround|timeline|ready|within)\s+(?:in\s+|within\s+)?(?:about\s+|around\s+|roughly\s+)?(\d+)\s+(?:working\s+|business\s+)?days?\b/iu';
+        if (! preg_match_all($pattern, $text, $m, PREG_SET_ORDER)) {
+            return null;
+        }
+        foreach ($m as $match) {
+            if ($deliveryDays === null || (int) $match[1] !== (int) $deliveryDays) {
+                return $match[0];
+            }
+        }
+
+        return null;
+    }
+
+    /** Three or more sentences opening with First / Then / Next / Finally reads like a school assignment. */
+    public static function stepList(string $text): bool
+    {
+        $count = preg_match_all('/(?:^|[.?!:]\s+|\n\s*)(?:First(?:ly)?|Then|Next|After that|Finally|Lastly)\b/u', $text);
+
+        return $count >= 3;
     }
 
     /** "Links aren't allowed in bids" and similar: draws attention to a limit instead of giving proof. */

@@ -29,7 +29,7 @@
         <p class="mt-2 text-xs text-slate-500">"You bid" is when you tapped Bid placed in BidRadar, so it includes the time to bid on Freelancer.</p>
     </section>
 
-    @foreach (['By category' => $byCategory, 'By bids on the project when I bid' => $byBucket] as $title => $rows)
+    @foreach (['By category' => $byCategory, 'By bids on the project when I bid' => $byBucket, 'By opening of the draft (from prompt v2)' => $byHook] as $title => $rows)
         <section class="card">
             <h2 class="font-semibold">{{ $title }}</h2>
             @if (collect($rows)->sum('bids') === 0)
@@ -38,7 +38,7 @@
                 <div class="-mx-4 mt-2 overflow-x-auto px-4">
                     <table class="w-full text-sm">
                         <thead class="text-left text-xs text-slate-500">
-                            <tr><th class="py-1 pr-3 font-medium">{{ $loop->first ? 'Category' : 'Bids' }}</th><th class="py-1 pr-3 text-right font-medium">Bids</th><th class="py-1 pr-3 text-right font-medium">Viewed</th><th class="py-1 pr-3 text-right font-medium">Chat</th><th class="py-1 text-right font-medium">Won</th></tr>
+                            <tr><th class="py-1 pr-3 font-medium">{{ ['Category', 'Bids', 'Opening'][$loop->index] }}</th><th class="py-1 pr-3 text-right font-medium">Bids</th><th class="py-1 pr-3 text-right font-medium">Viewed</th><th class="py-1 pr-3 text-right font-medium">Chat</th><th class="py-1 text-right font-medium">Won</th></tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
                             @foreach ($rows as $key => $r)

@@ -4,12 +4,44 @@ namespace App\Services\Drafting;
 
 /**
  * Reads delivery days from the owner's "Typical turnaround by category" notes,
- * e.g. "Fix: 1-2 days" or "New build: 3 weeks". Returns the upper end of the
- * range, or null when no line matches the category (never a guess).
+ * e.g. "Fix: 1-2 days" or "New build: 3 weeks". Never a guess: no matching
+ * line means no delivery time.
  */
 class Turnaround
 {
+    /** The upper end of the category's range, or null when no line matches. */
     public static function daysFor(string $notes, string $category): ?int
+    {
+        return self::range($notes, $category)[1] ?? null;
+    }
+
+    /**
+     * Delivery days sized to this job: the scoring estimate of hours (which already
+     * includes testing and handover) with a small buffer, in working days, kept
+     * inside the category's range. A single figure ("Checkout: 4 days") is the
+     * most it takes, so a small job can come in under it. Without an estimate,
+     * the upper end of the range.
+     */
+    public static function estimate(string $notes, string $category, ?int $hours): ?int
+    {
+        $range = self::range($notes, $category);
+        if ($range === null) {
+            return null;
+        }
+        [$low, $high] = $range;
+        if ($hours === null || $hours <= 0) {
+            return $high;
+        }
+
+        $perDay = max(1, (float) config('bidradar.delivery.hours_per_day', 6));
+        $buffer = max(1, (float) config('bidradar.delivery.buffer', 1.25));
+        $days = (int) ceil($hours * $buffer / $perDay);
+
+        return max($low, min($high, $days));
+    }
+
+    /** @return array{0: int, 1: int}|null [low, high] in days; a single figure gives [1, figure]. */
+    public static function range(string $notes, string $category): ?array
     {
         $targets = array_filter([
             self::norm($category),
@@ -26,12 +58,14 @@ class Turnaround
                 continue;
             }
 
-            $days = (int) (($m[3] ?? '') !== '' ? $m[3] : $m[2]);
-            if (str_starts_with(strtolower($m[4] ?? ''), 'w')) {
-                $days *= 7;
+            $factor = str_starts_with(strtolower($m[4] ?? ''), 'w') ? 7 : 1;
+            $high = (int) (($m[3] ?? '') !== '' ? $m[3] : $m[2]) * $factor;
+            $low = ($m[3] ?? '') !== '' ? (int) $m[2] * $factor : 1;
+            if ($high <= 0) {
+                return null;
             }
 
-            return $days > 0 ? $days : null;
+            return [max(1, min($low, $high)), $high];
         }
 
         return null;

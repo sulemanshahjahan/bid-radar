@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Models\Project;
+use App\Services\Drafting\ProposalQuality;
 use App\Services\Settings;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Title;
@@ -10,7 +11,8 @@ use Livewire\Component;
 
 /**
  * Outcomes of the bids I placed: view, chat and win rates by category and by
- * how many bids the project had, this week's bids against the cap, and recent wins.
+ * how many bids the project had and by the draft's opening hook, this week's bids
+ * against the cap, and recent wins.
  */
 #[Title('Stats')]
 class StatsPage extends Component
@@ -79,7 +81,13 @@ class StatsPage extends Component
 
     public function render(Settings $settings)
     {
-        $bids = Project::query()->whereNotNull('bid_placed_at')->get();
+        $bids = Project::query()->whereNotNull('bid_placed_at')->with('latestDraft')->get();
+
+        // Only drafts that recorded their opening (prompt v2 onwards); older bids are left out.
+        $byHook = $bids->filter(fn (Project $p) => ! empty($p->latestDraft?->strategy['hook_type']))
+            ->groupBy(fn (Project $p) => $p->latestDraft->strategy['hook_type'])
+            ->map(fn ($group, $hook) => ['label' => ProposalQuality::hookLabel($hook) ?? $hook] + self::rates($group))
+            ->sortByDesc('bids');
 
         $byCategory = $bids->groupBy(fn (Project $p) => $p->category ?? 'other')
             ->map(fn ($group, $cat) => ['label' => config('bidradar.categories.'.$cat, ucfirst((string) $cat))] + self::rates($group))
@@ -94,6 +102,7 @@ class StatsPage extends Component
             'speed' => self::speed(),
             'byCategory' => $byCategory,
             'byBucket' => $byBucket,
+            'byHook' => $byHook,
             'thisWeek' => $bids->filter(fn (Project $p) => $p->bid_placed_at->gte(now()->startOfWeek()))->count(),
             'weeklyCap' => $settings->int('weekly_bid_cap'),
             'recentWins' => Project::query()->where('status', 'won')->where('won_at', '>=', now()->subDays(30))->latest('won_at')->get(),
