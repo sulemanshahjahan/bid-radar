@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable([
     'project_id', 'version', 'proposal_text', 'edited_text', 'bid_amount', 'currency', 'is_hourly',
     'delivery_days', 'milestones', 'price_reason', 'questions_to_ask_later', 'check_failures', 'warnings',
-    'instruction', 'attempts',
+    'instruction', 'attempts', 'prompt_version', 'strategy',
 ])]
 class Draft extends Model
 {
@@ -22,6 +22,7 @@ class Draft extends Model
             'questions_to_ask_later' => 'array',
             'check_failures' => 'array',
             'warnings' => 'array',
+            'strategy' => 'array',
         ];
     }
 

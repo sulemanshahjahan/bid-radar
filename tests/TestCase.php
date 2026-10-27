@@ -61,12 +61,27 @@ abstract class TestCase extends BaseTestCase
     protected function draftReply(array $overrides = []): array
     {
         return array_merge([
-            'proposal_text' => 'Your checkout spins forever after the WooCommerce 9.3 update, so Stripe orders never complete. '
-                .'I would trace the failing checkout request and fix the plugin conflict or outdated template that is breaking it. '
-                .'First I would copy the site to staging and reproduce the spinning checkout with a test Stripe payment. '
-                .'Then I would read the PHP error log and browser console to find the exact request that fails, and fix the conflict or template override. '
-                .'Finally I would run test orders end to end on staging before applying the same fix to the live site. '
+            'plan' => [
+                'primary_problem' => 'Checkout hangs after the WooCommerce update, so no Stripe orders complete',
+                'client_priority' => 'Speed: orders are being lost',
+                'instructions' => [['instruction' => 'Fixed today', 'how_met' => 'Delivery time given']],
+                'hook_candidates' => [
+                    ['type' => 'diagnosis', 'text' => 'A checkout that spins forever right after a WooCommerce update is usually a plugin or template conflict.'],
+                    ['type' => 'risk', 'text' => 'Every hour the checkout spins is lost Stripe orders.'],
+                    ['type' => 'fast_fix', 'text' => 'This is a targeted fix, not a rebuild.'],
+                ],
+                'hook_type' => 'diagnosis',
+                'recommendation' => '',
+                'proof' => 'none',
+                'closing' => 'question',
+            ],
+            'proposal_text' => 'A checkout that spins forever right after the WooCommerce 9.3 update is usually a plugin conflict or an outdated '
+                .'template override breaking the checkout request, so Stripe never gets the order. '
+                .'I would copy the site to staging, reproduce it with a test Stripe payment, and read the PHP error log and browser '
+                .'console to find the exact request that fails. Once the conflict or template is fixed, I run test orders end to end '
+                .'on staging and apply the same fix to the live site, so nothing is changed blind on the store. '
                 .'Did the problem start right after the update, or after another plugin was updated at the same time?',
+            'self_review' => ['hook' => 8, 'understanding' => 8, 'expertise' => 8, 'proof' => 6, 'execution' => 8, 'timing' => 7, 'tone' => 8, 'concision' => 8],
             'bid_amount' => 171,
             'currency' => 'USD',
             'delivery_days' => 2,

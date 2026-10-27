@@ -34,6 +34,12 @@
             <label class="block">
                 <span class="label">Typical turnaround by category</span>
                 <textarea wire:model="form.turnaround_notes" rows="3" class="field" placeholder="Fix: 1-2 days&#10;Speed: 2-3 days"></textarea>
+                <span class="text-xs text-slate-500">Delivery is sized from the scoring estimate inside these ranges, so a small fix can come in under the top figure.</span>
+            </label>
+            <label class="block">
+                <span class="label">Availability</span>
+                <textarea wire:model="form.availability_notes" rows="2" class="field" placeholder="e.g. Usually free to start the same day on small fixes."></textarea>
+                <span class="text-xs text-slate-500">Drafts only say you can start today or deliver same day if it says so here.</span>
             </label>
             <label class="block">
                 <span class="label">My Freelancer portfolio</span>

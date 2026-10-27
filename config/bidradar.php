@@ -136,7 +136,7 @@ return [
 
         // Writing
         'word_min' => 80,
-        'word_max' => 150,
+        'word_max' => 250, // outer limits; each draft also gets a target range for its size (ProposalLength)
         'banned_phrases' => [
             'As an experienced', 'I have years', 'years of experience', 'Dear Sir', 'Dear Madam',
             'Dear Sir/Madam', 'I am interested in your project', "I'm interested in your project",
@@ -155,11 +155,23 @@ return [
         'turnaround_notes' => '',
         'style_notes' => '',
         'portfolio_notes' => '', // what is in my Freelancer profile portfolio (no links)
+        'availability_notes' => '', // e.g. "Usually free to start the same day". Drafts only claim what is written here.
     ],
 
     // Fixed-price scope check: warn (and stop matching the average bid) when the
     // estimated hours x hourly rate is more than this many times the price.
     'scope_warning_factor' => 2,
+
+    // Delivery days from the scoring estimate: hours x buffer / working hours a day,
+    // kept inside the category's turnaround range from Settings (Turnaround::estimate).
+    'delivery' => [
+        'hours_per_day' => 6,
+        'buffer' => 1.25,
+    ],
+
+    // A draft that passes the code checks but rates itself below this (weighted
+    // self-review, ProposalQuality) gets one revision. A self-rating, not a win predictor.
+    'min_draft_quality' => 60,
 
     'categories' => [
         'fix' => 'Fix',
