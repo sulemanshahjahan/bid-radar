@@ -68,6 +68,8 @@ class TryDrafts extends Command
                     'proposal' => $draft->proposal_text,
                     'words' => str_word_count($draft->proposal_text),
                     'check_failures' => $draft->check_failures ?? [],
+                    'needs_review' => ! empty($draft->check_failures),
+                    'warnings' => $draft->warnings ?? [],
                     'attempts' => $draft->attempts,
                     'strategy' => $draft->strategy ?? null,
                 ];
@@ -111,6 +113,12 @@ class TryDrafts extends Command
         }
         $this->newLine();
         $this->line($r['proposal']);
+        if (! empty($r['check_failures'])) {
+            $this->error('  NEEDS MANUAL REVIEW: failed hard checks after '.$r['attempts'].' attempt(s)');
+        }
+        foreach ($r['warnings'] ?? [] as $warning) {
+            $this->warn('  warning: '.$warning);
+        }
         foreach ($r['check_failures'] as $failure) {
             $this->warn('  ! '.$failure);
         }

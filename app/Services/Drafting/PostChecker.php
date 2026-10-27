@@ -84,7 +84,7 @@ class PostChecker
             $failures[] = "Missing the client's test phrase \"{$testPhrase}\".";
         }
 
-        $failures = array_merge($failures, self::contactViolations($text));
+        $failures = array_merge($failures, self::contactViolations($text, $briefText));
 
         if (mb_stripos($text, 'pamlico') !== false) {
             $failures[] = 'Mentions a forbidden company name.';
@@ -138,10 +138,36 @@ class PostChecker
         return array_merge($failures, self::pricingViolations($draft, $minimumBid));
     }
 
-    /** @return list<string> */
-    public static function contactViolations(string $text): array
+    /** Meeting tools that are also products a client can ask to integrate (e.g. Zoom classes in LearnDash). */
+    private const MEETING_TOOLS = ['zoom', 'google meet'];
+
+    /**
+     * @param  string|null  $briefText  When the client's brief names a meeting tool, the proposal may name it as
+     *                                  the thing being integrated ("Zoom integration", "your Zoom account"), never as
+     *                                  a way to talk ("a quick Zoom call", "discuss it on Zoom").
+     * @return list<string>
+     */
+    public static function contactViolations(string $text, ?string $briefText = null): array
     {
         $out = [];
+        foreach (self::MEETING_TOOLS as $tool) {
+            if ($briefText === null || ! preg_match('/\b'.preg_quote($tool, '/').'\b/i', $briefText)) {
+                continue;
+            }
+            $t = preg_quote($tool, '/');
+            $asContact = '/\b(?:call|chat|talk|speak|discuss\w*|catch up|hop on|jump on|get on|meet(?:ing)? (?:with )?(?:me|you)|let\'?s)\b[^.?!]{0,30}\b'.$t.'\b'
+                .'|\b'.$t.'\b(?:\s+\w+){0,2}?\s+(?:call|calls|chat|with me|with you|to (?:discuss|talk|chat|go over))\b/i';
+            if (preg_match($asContact, $text, $m)) {
+                $out[] = "Mentions off-platform contact (\"{$m[0]}\").";
+
+                return $out;
+            }
+            // The client's own integration: the tool followed by what is being integrated, or after "connect/integrate ... with".
+            $asTech = '/\b'.$t.'\b(?=\s+(?:integration|api|apps?|account|plan|meetings?|class(?:es)?|sessions?|webinars?|join (?:links?|buttons?)|links?|registration|waiting rooms?|rooms?|licen[cs]e|sdk|recordings?|scheduling|events?)\b)'
+                .'|\b(?:integrat\w*|connect\w*|sync\w*|link\w*)\s+(?:\w+\s+){0,3}?(?:with|to|into)\s+(?:your\s+|the\s+)?'.$t.'\b/i';
+            $text = preg_replace_callback($asTech, fn ($m) => preg_replace('/'.$t.'/i', 'MEETINGTOOL', $m[0]), $text);
+        }
+
         if (preg_match(self::EMAIL, $text)) {
             $out[] = 'Contains an email address.';
         }

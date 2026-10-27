@@ -84,7 +84,7 @@ return [
         'title' => 'Set up LearnDash with Zoom live classes',
         'description' => 'We run a WordPress site and want LearnDash courses with scheduled Zoom live classes that only enrolled students can join.',
         'details' => ['budget_min' => 100, 'budget_max' => 300, 'skills' => ['WordPress', 'LearnDash'], 'bid_count' => 10, 'bid_avg' => 220],
-        'expect' => 'No invented case study; insight carries it (enrolment-gated join links, timezones); general stats only if in the fact bank.',
+        'expect' => 'Names the Zoom integration and passes every check; no invented case study; insight carries it (enrolment-gated join links); general stats only if in the fact bank.',
     ],
     'J' => [
         'name' => 'Conflicting requirements',
@@ -92,6 +92,6 @@ return [
         'description' => "Need a complete multi-vendor marketplace on WooCommerce with vendor dashboards, commissions and payouts.\n"
             .'Must be delivered in 2 days and must not use any plugins at all. Budget is fixed.',
         'details' => ['budget_min' => 100, 'budget_max' => 200, 'skills' => ['WooCommerce', 'WordPress', 'PHP'], 'bid_count' => 22, 'bid_avg' => 160],
-        'expect' => 'Names the conflict (2 days and no plugins vs a full marketplace); proposes a practical alternative; promises neither.',
+        'expect' => 'Names the conflict (2 days and no plugins vs a full marketplace); at USD 200 for about 160 hours: a below-target warning and a first phase only, never the full scope; promises neither.',
     ],
 ];

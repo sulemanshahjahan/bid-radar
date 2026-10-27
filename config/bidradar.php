@@ -166,6 +166,16 @@ return [
     // estimated hours x hourly rate is more than this many times the price.
     'scope_warning_factor' => 2,
 
+    // Effective hourly rate (take-home after the fee / estimated hours) against my hourly rate.
+    // Below warn_below x rate: a warning with options. Below reduce_scope_below x rate on a job
+    // over reduce_scope_min_hours: the draft offers a first phase instead of the full scope.
+    // Neither changes the bid.
+    'profitability' => [
+        'warn_below' => 0.5,
+        'reduce_scope_below' => 0.25,
+        'reduce_scope_min_hours' => 16,
+    ],
+
     // Delivery from the scoring estimate: hours x buffer / delivery_hours_per_day working
     // days, plus dependency time, as calendar days. The category ranges in Settings are
     // advisory once there is an estimate (Turnaround::plan).
