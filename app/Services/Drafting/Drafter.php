@@ -26,7 +26,7 @@ use App\Services\Settings;
 class Drafter
 {
     /** Stored on every draft, so outcomes can be compared by prompt version and hook type. */
-    public const PROMPT_VERSION = 'v2-hooks';
+    public const PROMPT_VERSION = 'v3-coverage';
 
     public function __construct(
         private readonly ClaudeClient $claude,
@@ -43,12 +43,21 @@ class Drafter
         $hours = is_numeric($hours) ? (int) $hours : null;
         $price = $this->pricing->price($project->details ?? [], $hours);
         $category = (string) ($project->category ?? 'other');
-        $notes = (string) $this->settings->get('turnaround_notes');
-        $days = Turnaround::estimate($notes, $category, $hours);
+        $categoryName = config('bidradar.categories.'.$category, $category);
+        $dependencies = (array) $project->score('dependencies', []);
+        $delivery = Turnaround::plan(
+            (string) $this->settings->get('turnaround_notes'), $category, $hours, count($dependencies),
+            $this->settings->float('delivery_hours_per_day') ?: 6.0,
+        );
+        $days = $delivery['days'] ?? null;
 
         $warnings = array_values(array_filter([
             $price['warning'],
-            $days === null ? sprintf('No turnaround set for "%s" in Settings: delivery left blank, set it yourself.', config('bidradar.categories.'.$category, $category)) : null,
+            $days === null ? sprintf('No turnaround set for "%s" in Settings: delivery left blank, set it yourself.', $categoryName) : null,
+            ($delivery['outside_range'] ?? null) ? sprintf(
+                'Delivery of %d day%s from the %d-hour estimate is %s your usual %d-%d days for "%s": check it before bidding.',
+                $days, $days === 1 ? '' : 's', $hours, $delivery['outside_range'], $delivery['range'][0], $delivery['range'][1], $categoryName,
+            ) : null,
         ]));
 
         $factBank = $this->factBank();
@@ -64,6 +73,7 @@ class Drafter
             'word_max' => $length['max'],
             'client_word_limit' => $length['client_limit'],
             'phrase_opens' => $phraseOpens,
+            'deliverables' => (array) $project->score('deliverables', []),
         ];
 
         $system = [
@@ -79,7 +89,8 @@ class Drafter
             'length' => $length,
             'phrase_opens' => $phraseOpens,
             'hours' => $hours,
-            'range' => Turnaround::range($notes, $category),
+            'delivery' => $delivery,
+            'urgent' => ClientInstructions::urgent($clientText),
         ]);
         $failures = [];
         $draft = null;
@@ -380,8 +391,13 @@ class Drafter
               say how it is handled instead. Never claim an instruction is met when it is not.
             - hook_candidates: three distinct openings of different types from this list, written for this brief:
             {$hooks}
-              Choose the strongest for relevance, specificity, credibility and difference from a generic bid, not
-              the most dramatic. Use "experience" only when the fact bank has a directly comparable past project.
+              The strongest openings pair one specific insight with one real reason to trust it, in two sentences
+              at most: a directly comparable past project from the fact bank, a decisive recommendation with its
+              reason, or a delivery advantage you were given. A candidate may combine two types ("I've fixed this
+              exact editor-versus-live mismatch before: it is usually stale generated CSS"). Prefer the one a client
+              skimming fifty bids would stop on, as long as every word is true. Choose for relevance, specificity,
+              credibility and authority, not drama. Use "experience" only when the fact bank has a directly
+              comparable past project, and never claim a number of similar jobs the fact bank does not state.
             - recommendation: when the brief offers a choice or the approach matters, the option you recommend and
               the tradeoff that decides it. Empty when no choice is needed.
             - proof: the single most relevant fact bank item, or "none".
@@ -402,7 +418,12 @@ class Drafter
               their requirements, and name the tradeoff that matters ("For seven cards I'd use CSS Grid rather than
               a carousel: ..."). Stay accurate rather than absolute: say when the other option would make sense.
             - For problems, name the plausible causes worth checking ("usually stale generated CSS, caching or a
-              theme override"), never a confirmed diagnosis or a guaranteed fix before seeing the site.
+              theme override"), never a confirmed diagnosis or a guaranteed fix before seeing the site. For a quick
+              or small fix, one or two likely causes in one sentence is enough: the proposal is about getting it
+              fixed, not a list of theories.
+            - Cover the whole brief. Every major deliverable you are given must appear, even briefly, grouped into
+              natural sentences ("the homepage, FAQ, terms, partner program and login pages"), never as a checklist.
+              Spend the detail on the part that carries the risk; do not let it crowd out the rest of the scope.
             - Describe the work compactly: what you will check or build, and what the client receives, in one or two
               sentences ("I'll trace the conflicting styles, fix them without touching the rest of the layout, and
               check desktop and mobile. You get before/after screenshots and a short note on the fix."). Never a
@@ -453,6 +474,31 @@ class Drafter
               only if it is allowed by the number rule above.
             - Availability: never say you can start today, now or immediately, or offer same-day delivery, unless
               the fact bank's availability section says so.
+
+            Safe commitments:
+            - On a live site, say you work on a staging copy or with a backup first when the change could break
+              something (checkout, plugins, theme files, migrations). Skip it for trivial CSS.
+            - Never ask the client to send passwords, logins or credentials in the chat. Ask for a staging copy or
+              a temporary user they can remove afterwards, if access needs mentioning at all.
+            - When the plan relies on an API, a platform feature or account access you have not seen, state the
+              assumption ("assuming your plan includes webhook access") instead of promising the integration.
+            - Payment-to-access and other webhook flows: the handoff must also cope with refunds, cancellations or
+              renewals, duplicate or late webhook deliveries, and a failed delivery. Mention the one or two that
+              matter for this brief; never present it as a single trivial webhook.
+
+            Technical notes (use only what fits this brief; never add jargon or technology to sound expert):
+            - Elementor: regenerated CSS files, caching/minification, theme or global style overrides, responsive
+              settings per breakpoint, missing fonts or assets.
+            - WooCommerce: gateway logs and webhooks, plugin or theme template conflicts, checkout caching and
+              nonces, shipping and tax rules, variations, hooks and filters rather than core edits.
+            - WordPress security: malware and hidden backdoors, vulnerable plugins, credentials, backups, server
+              configuration, hardening and a firewall; never call a site secure before those checks.
+            - Shopify: Liquid, theme sections and blocks, metafields, app conflicts, what checkout allows on the
+              store's plan; prefer a theme change to a paid app when the theme can do it.
+            - HTML/CSS/JavaScript: semantic markup, native CSS (Grid, Flexbox) over libraries, accessibility,
+              performance, easy editing later.
+            - Membership sites: registration and login, payment confirmation, provisioning, access rules,
+              refunds and cancellations, content protection.
 
             Tone about the freelancer:
             - Never write anything that puts down the freelancer's experience or argues against hiring them: no
@@ -537,15 +583,18 @@ class Drafter
 
     /**
      * @param  array{amount: float, currency: string, is_hourly: bool, minimum: float, reason: string, warning: string|null}  $price
-     * @param  array{length: array<string, mixed>, phrase_opens: bool, hours: int|null, range: array{0: int, 1: int}|null}  $job
+     * @param  array{length: array<string, mixed>, phrase_opens: bool, hours: int|null, delivery: array<string, mixed>|null, urgent: bool}  $job
      */
     private function userContent(Project $project, array $price, ?int $days, ?string $instruction, array $job): string
     {
         $scoring = $project->scoring ?? [];
         $questions = $scoring['client_questions'] ?? [];
         $requirements = $scoring['client_requirements'] ?? [];
+        $deliverables = $scoring['deliverables'] ?? [];
+        $dependencies = $scoring['dependencies'] ?? [];
         $phrase = $scoring['client_test_phrase'] ?? null;
         $length = $job['length'];
+        $list = fn (array $items) => $items ? "\n  * ".implode("\n  * ", $items) : 'none';
 
         $parts = [
             "Write a proposal for this project.\n\n".ProjectBrief::render($project),
@@ -553,8 +602,10 @@ class Drafter
                 .'- Category: '.($scoring['category'] ?? 'other')."\n"
                 .'- Summary: '.($scoring['brief_summary'] ?? '')."\n"
                 .'- Client test phrase: '.(($scoring['client_test_phrase'] ?? null) ? '"'.$scoring['client_test_phrase'].'"' : 'none')."\n"
-                .'- Client questions to answer: '.($questions ? "\n  * ".implode("\n  * ", $questions) : 'none')."\n"
-                .'- Client requirements to address: '.($requirements ? "\n  * ".implode("\n  * ", $requirements) : 'none'),
+                .'- Client questions to answer: '.$list($questions)."\n"
+                .'- Client requirements to address: '.$list($requirements)
+                .($deliverables ? "\n- Major deliverables (the proposal must cover every one, grouped naturally, not as a checklist): ".$list($deliverables) : '')
+                .($dependencies ? "\n- Depends on (outside the freelancer's control; qualify the plan or timeline where it matters): ".$list($dependencies) : ''),
             sprintf(
                 'Use bid_amount %s and currency %s%s.',
                 rtrim(rtrim(number_format($price['amount'], 2, '.', ''), '0'), '.'),
@@ -562,7 +613,7 @@ class Drafter
                 $price['is_hourly'] ? ' (this is an hourly rate)' : '',
             ),
             $days !== null
-                ? "Delivery time: {$days} ".($days === 1 ? 'day' : 'days').'.'.self::deliveryBasis($job['hours'], $job['range'])
+                ? "Delivery time: {$days} ".($days === 1 ? 'day' : 'days').'.'.self::deliveryBasis($job['hours'], $job['delivery'])
                 : 'There is no delivery time: do not mention a timeline or a number of days.',
             sprintf(
                 'Job size: %s. Word target: %d-%d words (the check fails outside %d-%d)%s.',
@@ -570,6 +621,11 @@ class Drafter
                 $length['client_limit'] ? "; the client set a limit of {$length['client_limit']} words, never exceed it" : '',
             ),
         ];
+
+        if ($days !== null && $days <= 2 && ($job['urgent'] || in_array($length['size'], ['quick', 'small'], true))) {
+            $parts[] = "Delivery advantage: {$days} ".($days === 1 ? 'day' : 'days').($job['urgent'] ? ' for a client in a hurry' : ' for a small job')
+                .' is a real selling point. Put it in the opening two or three sentences, stated plainly.';
+        }
 
         if ($phrase && $job['phrase_opens']) {
             $parts[] = "Required opening: the client told bidders to begin with \"{$phrase}\". proposal_text must start with exactly those words, then your hook.";
@@ -587,17 +643,27 @@ class Drafter
         return implode("\n\n", $parts);
     }
 
-    /** @param array{0: int, 1: int}|null $range */
-    private static function deliveryBasis(?int $hours, ?array $range): string
+    /**
+     * How code reached the delivery time, for the model only (these figures must not appear in the proposal).
+     *
+     * @param  array<string, mixed>|null  $delivery  Turnaround::plan()
+     */
+    private static function deliveryBasis(?int $hours, ?array $delivery): string
     {
-        if ($range === null) {
+        if ($delivery === null) {
             return '';
         }
-        $span = $range[0] === $range[1] ? "{$range[1]}" : "{$range[0]}-{$range[1]}";
+        if ($delivery['basis'] !== 'estimate') {
+            return " Calendar days, the freelancer's usual turnaround for this category (no estimate of hours).";
+        }
 
-        return $hours !== null
-            ? " (sized by code from about {$hours} hours of work, within the freelancer's usual {$span} days for this category)"
-            : " (the freelancer's usual turnaround for this category; no estimate of hours)";
+        return sprintf(
+            ' Calendar days, set by code: about %d hours of work is %d working day%s%s, plus weekends. Do not quote the hours or working days.',
+            $hours,
+            $delivery['working_days'],
+            $delivery['working_days'] === 1 ? '' : 's',
+            $delivery['dependency_days'] ? ' including '.$delivery['dependency_days'].' for the dependencies listed above' : ' with a buffer for testing',
+        );
     }
 
     /** @return list<string> The first sentence of the latest drafts for other projects, so openings vary. */

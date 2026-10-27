@@ -3,9 +3,10 @@
 namespace App\Services\Drafting;
 
 /**
- * Reads delivery days from the owner's "Typical turnaround by category" notes,
- * e.g. "Fix: 1-2 days" or "New build: 3 weeks". Never a guess: no matching
- * line means no delivery time.
+ * Delivery days for a bid. The owner's "Typical turnaround by category" notes
+ * (e.g. "Fix: 1-2 days", "New build: 3 weeks") say which categories they deliver
+ * and how long they usually take. Never a guess: no matching line means no
+ * delivery time.
  */
 class Turnaround
 {
@@ -16,28 +17,50 @@ class Turnaround
     }
 
     /**
-     * Delivery days sized to this job: the scoring estimate of hours (which already
-     * includes testing and handover) with a small buffer, in working days, kept
-     * inside the category's range. A single figure ("Checkout: 4 days") is the
-     * most it takes, so a small job can come in under it. Without an estimate,
-     * the upper end of the range.
+     * Delivery sized to this job. With an hours estimate (which already includes
+     * testing and handover) the range is advisory: working days = hours x buffer /
+     * the owner's working hours a day, plus time for external dependencies on
+     * jobs longer than a day, then converted to calendar days (weekends added).
+     * Without an estimate, the top of the range, as before.
+     *
+     * @return array{days: int, working_days: int|null, dependency_days: int, range: array{0: int, 1: int}, basis: string, outside_range: string|null}|null
      */
-    public static function estimate(string $notes, string $category, ?int $hours): ?int
+    public static function plan(string $notes, string $category, ?int $hours, int $dependencies = 0, float $hoursPerDay = 6): ?array
     {
         $range = self::range($notes, $category);
         if ($range === null) {
             return null;
         }
         [$low, $high] = $range;
+
         if ($hours === null || $hours <= 0) {
-            return $high;
+            return ['days' => $high, 'working_days' => null, 'dependency_days' => 0, 'range' => $range, 'basis' => 'range', 'outside_range' => null];
         }
 
-        $perDay = max(1, (float) config('bidradar.delivery.hours_per_day', 6));
+        $perDay = max(1, $hoursPerDay);
         $buffer = max(1, (float) config('bidradar.delivery.buffer', 1.25));
-        $days = (int) ceil($hours * $buffer / $perDay);
+        $working = max(1, (int) ceil($hours * $buffer / $perDay));
 
-        return max($low, min($high, $days));
+        // A one-day job waits on nobody; longer jobs lose time to accounts, content and approvals.
+        $dependencyDays = $working > 1 && $dependencies > 0 ? ($dependencies >= 3 ? 2 : 1) : 0;
+        $working += $dependencyDays;
+
+        $days = self::calendarDays($working);
+
+        return [
+            'days' => $days,
+            'working_days' => $working,
+            'dependency_days' => $dependencyDays,
+            'range' => $range,
+            'basis' => 'estimate',
+            'outside_range' => $days > $high ? 'above' : ($days < $low ? 'below' : null),
+        ];
+    }
+
+    /** Working days to calendar days: a weekend for every 5 working days (the start day is unknown, so assume it falls inside). */
+    public static function calendarDays(int $workingDays): int
+    {
+        return $workingDays + 2 * intdiv(max(0, $workingDays), 5);
     }
 
     /** @return array{0: int, 1: int}|null [low, high] in days; a single figure gives [1, figure]. */

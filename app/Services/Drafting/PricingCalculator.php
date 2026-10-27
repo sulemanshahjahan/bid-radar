@@ -81,7 +81,22 @@ class PricingCalculator
             }
         }
 
-        return $this->result($amount, $currency, false, $minimum, $reason, $warning);
+        $result = $this->result($amount, $currency, false, $minimum, $reason, $warning);
+        $result['reason'] .= $this->takeHome($result['amount'], $currency, $estimatedHours);
+
+        return $result;
+    }
+
+    /** "; take-home USD 153 after the 10% fee, about USD 38/hour for 4 hours". Information only: never moves the bid. */
+    private function takeHome(float $amount, string $currency, ?int $hours): string
+    {
+        $fee = max(0, min(50, $this->settings->float('platform_fee_percent')));
+        $net = floor($amount * (1 - $fee / 100));
+        $out = sprintf('; take-home %s %s after the %s%% fee', $currency, self::fmt($net), self::fmt($fee));
+
+        return $hours !== null && $hours > 0
+            ? $out.sprintf(', about %s %s/hour for %d hours', $currency, self::fmt(round($net / $hours)), $hours)
+            : $out;
     }
 
     /** @return array{amount: float, currency: string, is_hourly: bool, minimum: float, reason: string, warning: string|null} */

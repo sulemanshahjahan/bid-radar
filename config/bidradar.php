@@ -133,6 +133,10 @@ return [
         'floor_price_usd' => 25,
         'avg_bid_factor_low' => 0.90,
         'avg_bid_factor_high' => 1.00,
+        'platform_fee_percent' => 10, // Freelancer's fee on fixed-price work; only used to show take-home pay
+
+        // Delivery: working hours a day I can give one project (Turnaround::plan)
+        'delivery_hours_per_day' => 6,
 
         // Writing
         'word_min' => 80,
@@ -162,10 +166,10 @@ return [
     // estimated hours x hourly rate is more than this many times the price.
     'scope_warning_factor' => 2,
 
-    // Delivery days from the scoring estimate: hours x buffer / working hours a day,
-    // kept inside the category's turnaround range from Settings (Turnaround::estimate).
+    // Delivery from the scoring estimate: hours x buffer / delivery_hours_per_day working
+    // days, plus dependency time, as calendar days. The category ranges in Settings are
+    // advisory once there is an estimate (Turnaround::plan).
     'delivery' => [
-        'hours_per_day' => 6,
         'buffer' => 1.25,
     ],
 

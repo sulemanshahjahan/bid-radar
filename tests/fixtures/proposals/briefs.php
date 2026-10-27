@@ -13,10 +13,11 @@ return [
         'description' => "I need a WordPress website to sell a single online course. Theme: JupiterX or WPBakery.\n"
             ."Homepage with videos, text, photos, testimonials and the course curriculum. FAQ page and terms page.\n"
             ."Checkout through Lemon Squeezy. Membership access with ARMember so only buyers can see the course.\n"
-            ."An affiliate / partner program so partners can promote the course.\n"
+            ."An affiliate / partner program so partners can promote the course, with a partner program page.\n"
+            ."A sign up / login page for members.\n"
             .'A members-only course page with embedded videos and a downloadable PDF.',
         'details' => ['budget_min' => 500, 'budget_max' => 1000, 'currency' => 'GBP', 'skills' => ['WordPress', 'PHP', 'Website Design'], 'bid_count' => 40, 'bid_avg' => 700],
-        'expect' => 'Hook on the payment-to-access handoff; Lemon Squeezy to ARMember needs a webhook/custom code, not assumed native; no invented statistics; realistic delivery.',
+        'expect' => 'Hook on the payment-to-access handoff; Lemon Squeezy to ARMember needs a webhook/custom code, not assumed native, with refunds and duplicate events handled; every page named (incl. partner program and login); no invented statistics; realistic delivery (not 28 days).',
     ],
     'B' => [
         'name' => 'HTML5 seven-card section',

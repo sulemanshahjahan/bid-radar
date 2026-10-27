@@ -11,6 +11,7 @@ class ProposalLength
 {
     /** size => [target min, target max] */
     public const BANDS = [
+        'quick' => [60, 100], // a fix of a few hours: say what is wrong, what you will do, when
         'small' => [80, 130],
         'medium' => [120, 180],
         'complex' => [160, 250],
@@ -25,7 +26,8 @@ class ProposalLength
         $size = self::size($hours, $category);
         [$targetMin, $targetMax] = self::BANDS[$size];
 
-        $min = $settingsMin;
+        // A quick fix may go under the Settings minimum: padding it out is what makes it read like a template.
+        $min = $size === 'quick' ? min($settingsMin, $targetMin) : $settingsMin;
         $max = min($settingsMax, (int) ceil($targetMax * self::SLACK));
 
         if ($clientLimit !== null) {
@@ -53,6 +55,7 @@ class ProposalLength
         }
 
         return match (true) {
+            $hours <= 3 => 'quick',
             $hours <= 8 => 'small',
             $hours <= 40 => 'medium',
             default => 'complex',

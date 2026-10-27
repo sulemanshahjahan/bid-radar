@@ -34,7 +34,13 @@
             <label class="block">
                 <span class="label">Typical turnaround by category</span>
                 <textarea wire:model="form.turnaround_notes" rows="3" class="field" placeholder="Fix: 1-2 days&#10;Speed: 2-3 days"></textarea>
-                <span class="text-xs text-slate-500">Delivery is sized from the scoring estimate inside these ranges, so a small fix can come in under the top figure.</span>
+                <span class="text-xs text-slate-500">Which categories you deliver, and the delivery used when there is no hours estimate. With an estimate, delivery is sized from the hours and these ranges are only a guide (the draft warns when it falls outside).</span>
+            </label>
+            <label class="block">
+                <span class="label">Working hours a day for one project</span>
+                <input type="number" step="0.5" wire:model="form.delivery_hours_per_day" class="field">
+                @error('form.delivery_hours_per_day') <span class="text-xs text-red-600">{{ $message }}</span> @enderror
+                <span class="text-xs text-slate-500">Estimated hours are divided by this to get working days; weekends are added for the calendar delivery.</span>
             </label>
             <label class="block">
                 <span class="label">Availability</span>
@@ -60,7 +66,9 @@
                 <label class="block"><span class="label">Fixed-price floor</span><input type="number" step="any" wire:model="form.floor_price_usd" class="field"> @error('form.floor_price_usd') <span class="text-xs text-red-600">{{ $message }}</span> @enderror</label>
                 <label class="block"><span class="label">Avg-bid factor low</span><input type="number" step="0.01" wire:model="form.avg_bid_factor_low" class="field"> @error('form.avg_bid_factor_low') <span class="text-xs text-red-600">{{ $message }}</span> @enderror</label>
                 <label class="block"><span class="label">Avg-bid factor high</span><input type="number" step="0.01" wire:model="form.avg_bid_factor_high" class="field"> @error('form.avg_bid_factor_high') <span class="text-xs text-red-600">{{ $message }}</span> @enderror</label>
+                <label class="block"><span class="label">Freelancer fee %</span><input type="number" step="0.1" wire:model="form.platform_fee_percent" class="field"> @error('form.platform_fee_percent') <span class="text-xs text-red-600">{{ $message }}</span> @enderror</label>
             </div>
+            <p class="text-xs text-slate-500">The fee only shows take-home pay and the hourly rate it works out to; it does not change the bid.</p>
         </section>
 
         {{-- Writing --}}
