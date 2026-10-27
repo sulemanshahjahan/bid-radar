@@ -64,6 +64,11 @@ class PostChecker
         if ($phrase = self::conflictingDelivery($text, $draft['delivery_days'] ?? null)) {
             $failures[] = "Delivery in the text (\"{$phrase}\") differs from the bid's delivery time.";
         }
+        foreach (self::integrationTools($briefText) as $tool) {
+            if (! preg_match('/\b'.preg_quote($tool, '/').'\b/i', $text)) {
+                $failures[] = 'The client asked for a '.ucwords($tool).' integration: name it ("the '.ucwords($tool).' integration", "your '.ucwords($tool).' account") instead of a generic meeting tool.';
+            }
+        }
         if ($missing = self::missingDeliverables($text, $rules['deliverables'] ?? [])) {
             $failures[] = 'Does not mention these requested deliverables: '.implode('; ', $missing).'. Cover each one briefly, grouped naturally.';
         }
@@ -141,31 +146,45 @@ class PostChecker
     /** Meeting tools that are also products a client can ask to integrate (e.g. Zoom classes in LearnDash). */
     private const MEETING_TOOLS = ['zoom', 'google meet'];
 
+    /** Wording that uses a meeting tool as a way to talk ("a quick Zoom call", "discuss it on Zoom", "meet me on Zoom"). */
+    private static function asContact(string $tool): string
+    {
+        $t = preg_quote($tool, '/');
+
+        return '/\b(?:call|chat|talk|speak|discuss\w*|catch up|hop on|jump on|get on|meet (?:me|you|on|over|via)|meeting with (?:me|you)|reach|contact|message|ping|interview|let\'?s)\b[^.?!]{0,30}\b'.$t.'\b'
+            .'|\b'.$t.'\b(?:\s+\w+){0,2}?\s+(?:call|calls|chat|with me|with you|to (?:discuss|talk|chat|go over))\b/i';
+    }
+
     /**
-     * @param  string|null  $briefText  When the client's brief names a meeting tool, the proposal may name it as
-     *                                  the thing being integrated ("Zoom integration", "your Zoom account"), never as
-     *                                  a way to talk ("a quick Zoom call", "discuss it on Zoom").
+     * Meeting tools the client asks to have integrated: named in the brief, and never there as a way to talk.
+     * A brief that says "let's discuss on Zoom" is an off-platform request, not an integration.
+     *
+     * @return list<string>
+     */
+    public static function integrationTools(?string $briefText): array
+    {
+        return array_values(array_filter(self::MEETING_TOOLS, fn ($tool) => $briefText !== null
+            && preg_match('/\b'.preg_quote($tool, '/').'\b/i', $briefText)
+            && ! preg_match(self::asContact($tool), $briefText)));
+    }
+
+    /**
+     * @param  string|null  $briefText  When the client asks to integrate a meeting tool, the proposal may name it
+     *                                  ("the Zoom integration", "Zoom's waiting room"), never use it as a way to talk
+     *                                  ("a quick Zoom call", "discuss it on Zoom").
      * @return list<string>
      */
     public static function contactViolations(string $text, ?string $briefText = null): array
     {
         $out = [];
-        foreach (self::MEETING_TOOLS as $tool) {
-            if ($briefText === null || ! preg_match('/\b'.preg_quote($tool, '/').'\b/i', $briefText)) {
-                continue;
-            }
-            $t = preg_quote($tool, '/');
-            $asContact = '/\b(?:call|chat|talk|speak|discuss\w*|catch up|hop on|jump on|get on|meet(?:ing)? (?:with )?(?:me|you)|let\'?s)\b[^.?!]{0,30}\b'.$t.'\b'
-                .'|\b'.$t.'\b(?:\s+\w+){0,2}?\s+(?:call|calls|chat|with me|with you|to (?:discuss|talk|chat|go over))\b/i';
-            if (preg_match($asContact, $text, $m)) {
+        foreach (self::integrationTools($briefText) as $tool) {
+            if (preg_match(self::asContact($tool), $text, $m)) {
                 $out[] = "Mentions off-platform contact (\"{$m[0]}\").";
 
                 return $out;
             }
-            // The client's own integration: the tool followed by what is being integrated, or after "connect/integrate ... with".
-            $asTech = '/\b'.$t.'\b(?=\s+(?:integration|api|apps?|account|plan|meetings?|class(?:es)?|sessions?|webinars?|join (?:links?|buttons?)|links?|registration|waiting rooms?|rooms?|licen[cs]e|sdk|recordings?|scheduling|events?)\b)'
-                .'|\b(?:integrat\w*|connect\w*|sync\w*|link\w*)\s+(?:\w+\s+){0,3}?(?:with|to|into)\s+(?:your\s+|the\s+)?'.$t.'\b/i';
-            $text = preg_replace_callback($asTech, fn ($m) => preg_replace('/'.$t.'/i', 'MEETINGTOOL', $m[0]), $text);
+            // Every other mention is the client's own technology.
+            $text = preg_replace('/\b'.preg_quote($tool, '/').'\b/i', 'MEETINGTOOL', $text);
         }
 
         if (preg_match(self::EMAIL, $text)) {
