@@ -7,6 +7,7 @@ use App\Livewire\ProjectShow;
 use App\Models\Draft;
 use App\Models\Project;
 use App\Models\User;
+use App\Services\Drafting\ClientInstructions;
 use App\Services\Drafting\Drafter;
 use App\Services\Drafting\PostChecker;
 use App\Services\Drafting\PricingCalculator;
@@ -183,20 +184,92 @@ class ProposalV3FixesTest extends TestCase
         $this->assertNull($hourly['profit_warning'] ?? null);
     }
 
-    public function test_the_marketplace_draft_carries_the_warning_and_a_first_phase_scope(): void
+    public function test_a_client_demanding_the_complete_scope_at_a_fixed_budget_means_skip(): void
     {
         app(Settings::class)->set(['hourly_rate_usd' => 25, 'platform_fee_percent' => 10, 'turnaround_notes' => 'New build: 2-8 weeks']);
         $project = $this->briefProject('J', ['category' => 'new_build', 'estimated_hours' => 160, 'dependencies' => ['Payment provider payout API']]);
-        // Two replies: the stock text may fail this brief's checks; only delivery and the prompt matter here.
+        // Two replies: the stock text may fail this brief's checks; only the decision and the prompt matter here.
         $this->claude->reply($this->draftReply(), 'claude-sonnet-5-5')->reply($this->draftReply(), 'claude-sonnet-5-5');
 
         $draft = app(Drafter::class)->draft($project);
 
-        $this->assertNotNull($draft->profitWarning());
-        $this->assertTrue($draft->strategy['first_phase_only']);
-        $this->assertSame(2, $draft->delivery_days, 'Delivered on the 7 hours the price covers, not 160.');
-        $this->assertSame(200.0, (float) $draft->bid_amount);
-        $this->assertStringContainsString('Do not offer the whole scope for this price', $this->claude->requests[0]->userContent);
+        $this->assertSame('skip', $draft->strategy['scope_mode']);
+        $this->assertStringStartsWith('Recommended: skip this project. The bid covers about 7 of the estimated 160 hours, and the client asks for the complete scope at a fixed budget.', $draft->profitWarning());
+        $content = $this->claude->requests[0]->userContent;
+        $this->assertStringContainsString('Do not present a partial solution or a first phase as meeting the brief', $content);
+        $this->assertStringNotContainsString('Propose a first phase', $content);
+        $this->assertGreaterThan(14, $draft->delivery_days, 'No 2-day "first phase": delivery reflects the real scope.');
+        $this->assertSame(200.0, (float) $draft->bid_amount, 'The bid is never raised or changed.');
+    }
+
+    public function test_too_little_for_a_working_first_phase_offers_a_discovery_phase_instead(): void
+    {
+        app(Settings::class)->set(['hourly_rate_usd' => 25, 'platform_fee_percent' => 10, 'turnaround_notes' => 'New build: 2-8 weeks']);
+        // Brief J without "Budget is fixed": the client never demanded the complete scope.
+        $b = self::briefs()['J'];
+        $project = $this->makeProject(
+            ['title' => $b['title'], 'description' => str_replace(' Budget is fixed.', '', $b['description'])],
+            $b['details'],
+            $this->scoringReply(['category' => 'new_build', 'estimated_hours' => 160]),
+        );
+        $this->claude->reply($this->draftReply(), 'claude-sonnet-5-5')->reply($this->draftReply(), 'claude-sonnet-5-5');
+
+        $draft = app(Drafter::class)->draft($project);
+
+        $this->assertSame('discovery', $draft->strategy['scope_mode']);
+        $this->assertContains('The bid covers about 7 of the estimated 160 hours: too little to build a working part of it. The draft offers a paid discovery and planning phase instead, if the client agrees.', $draft->warnings);
+        $content = $this->claude->requests[0]->userContent;
+        $this->assertStringContainsString('Do not offer to build any of it for this price', $content);
+        $this->assertStringContainsString('if the client agrees', $content);
+        $this->assertSame(2, $draft->delivery_days, 'A 7-hour planning phase, not the 160-hour build.');
+    }
+
+    public function test_a_first_build_phase_only_when_the_covered_hours_can_build_something(): void
+    {
+        $severe = ['reduce_scope' => true];
+
+        $this->assertSame('first_phase', Drafter::scopeMode($severe + ['covered_hours' => 40], 'Build a customer portal.'));
+        $this->assertSame('first_phase', Drafter::scopeMode($severe + ['covered_hours' => 16], 'Build a customer portal.'));
+        $this->assertSame('discovery', Drafter::scopeMode($severe + ['covered_hours' => 15], 'Build a customer portal.'));
+        $this->assertSame('skip', Drafter::scopeMode($severe + ['covered_hours' => 2], 'Build a customer portal.'), 'Too little for even a plan.');
+        $this->assertSame('skip', Drafter::scopeMode($severe + ['covered_hours' => 40], 'Need the complete portal. Budget is fixed.'));
+        $this->assertNull(Drafter::scopeMode(['reduce_scope' => false, 'covered_hours' => 2], 'Need the complete portal. Budget is fixed.'), 'Not far underpriced: the normal proposal.');
+    }
+
+    public function test_full_scope_demands_need_both_a_fixed_budget_and_the_complete_scope(): void
+    {
+        $this->assertTrue(ClientInstructions::requiresFullScope(self::briefs()['J']['description']));
+        $this->assertTrue(ClientInstructions::requiresFullScope('All the features listed above. The budget is final.'));
+        $this->assertFalse(ClientInstructions::requiresFullScope('Need a complete marketplace, open to a phased approach.'));
+        $this->assertFalse(ClientInstructions::requiresFullScope('Budget is fixed at $200 for a logo tweak.'));
+    }
+
+    public function test_any_bid_under_the_target_rate_gets_an_information_note(): void
+    {
+        app(Settings::class)->set(['hourly_rate_usd' => 25, 'platform_fee_percent' => 10]);
+        $usd = ['type' => 'fixed', 'currency' => 'USD', 'exchange_rate' => 1];
+        $calc = app(PricingCalculator::class);
+
+        $cards = $calc->price($usd + ['budget_min' => 30, 'budget_max' => 250, 'bid_count' => 25, 'bid_avg' => 90], 4);
+        $this->assertSame('Under your hourly target (information only): about USD 19.35/hour after the fee for 4 hours, against your USD 25.', $cards['profit_info']);
+        $this->assertNull($cards['profit_warning']);
+        $this->assertFalse($cards['reduce_scope']);
+        $this->assertSame(86.0, $cards['amount'], 'Information only: the bid does not move.');
+
+        $paid = $calc->price($usd + ['budget_min' => 100, 'budget_max' => 300, 'bid_count' => 5, 'bid_avg' => 200], 4);
+        $this->assertNull($paid['profit_info'], 'At or above target: no note.');
+
+        $severe = $calc->price($usd + self::briefs()['J']['details'], 160);
+        $this->assertNull($severe['profit_info'], 'Far under: the warning replaces the note.');
+        $this->assertNotNull($severe['profit_warning']);
+    }
+
+    public function test_the_skip_recommendation_leads_the_pricing_warning(): void
+    {
+        $draft = Draft::query()->make(['warnings' => ['Below your hourly target: ...', 'Recommended: skip this project. ...', 'Under your hourly target (information only): ...']]);
+
+        $this->assertStringStartsWith('Recommended: skip', $draft->profitWarning());
+        $this->assertNull(Draft::query()->make(['warnings' => ['Under your hourly target (information only): ...']])->profitWarning(), 'The note is not pushed to Telegram.');
     }
 
     // --- 4. A draft that still fails a hard check needs manual review -----------

@@ -45,8 +45,9 @@ class Drafter
         $category = (string) ($project->category ?? 'other');
         $categoryName = config('bidradar.categories.'.$category, $category);
         $dependencies = (array) $project->score('dependencies', []);
-        // A first-phase-only bid is delivered on the hours the price covers, not the full scope.
-        $deliveryHours = ($price['reduce_scope'] ?? false) ? max(1, (int) $price['covered_hours']) : $hours;
+        $scopeMode = self::scopeMode($price, $project->title."\n".$project->description);
+        // A first phase or a discovery phase is delivered on the hours the price covers, not the full scope.
+        $deliveryHours = in_array($scopeMode, ['first_phase', 'discovery'], true) ? max(1, (int) $price['covered_hours']) : $hours;
         $delivery = Turnaround::plan(
             (string) $this->settings->get('turnaround_notes'), $category, $deliveryHours, $dependencies,
             $this->settings->float('delivery_hours_per_day') ?: 6.0,
@@ -56,6 +57,8 @@ class Drafter
         $warnings = array_values(array_filter([
             $price['warning'],
             $price['profit_warning'] ?? null,
+            self::scopeWarning($scopeMode, $price['covered_hours'] ?? null, $hours),
+            $price['profit_info'] ?? null,
             $days === null ? sprintf('No turnaround set for "%s" in Settings: delivery left blank, set it yourself.', $categoryName) : null,
             ($delivery['outside_range'] ?? null) ? sprintf(
                 'Delivery of %d day%s from the %d-hour estimate is %s your usual %d-%d days for "%s": check it before bidding.',
@@ -94,7 +97,7 @@ class Drafter
             'hours' => $deliveryHours,
             'delivery' => $delivery,
             'urgent' => ClientInstructions::urgent($clientText),
-            'reduce_scope' => $price['reduce_scope'] ?? false,
+            'scope_mode' => $scopeMode,
         ]);
         $failures = [];
         $draft = null;
@@ -166,7 +169,7 @@ class Drafter
             'instruction' => $instruction ? mb_substr($instruction, 0, 250) : null,
             'attempts' => $attempts,
             'prompt_version' => self::PROMPT_VERSION,
-            'strategy' => ($draft['strategy'] ?? []) + ['size' => $length['size'], 'revised' => $revised, 'first_phase_only' => $price['reduce_scope'] ?? false],
+            'strategy' => ($draft['strategy'] ?? []) + ['size' => $length['size'], 'revised' => $revised, 'scope_mode' => $scopeMode],
         ]);
     }
 
@@ -589,7 +592,7 @@ class Drafter
 
     /**
      * @param  array{amount: float, currency: string, is_hourly: bool, minimum: float, reason: string, warning: string|null}  $price
-     * @param  array{length: array<string, mixed>, phrase_opens: bool, hours: int|null, delivery: array<string, mixed>|null, urgent: bool}  $job
+     * @param  array{length: array<string, mixed>, phrase_opens: bool, hours: int|null, delivery: array<string, mixed>|null, urgent: bool, scope_mode: string|null}  $job
      */
     private function userContent(Project $project, array $price, ?int $days, ?string $instruction, array $job): string
     {
@@ -633,10 +636,8 @@ class Drafter
                 .' is a real selling point. Put it in the opening two or three sentences, stated plainly.';
         }
 
-        if ($job['reduce_scope']) {
-            $parts[] = 'Scope and price: this bid covers only a small part of the full scope the brief describes. Do not offer the '
-                .'whole scope for this price. Propose a clearly defined first phase that fits the bid and the delivery time, name '
-                .'what it includes, and say the remaining phases would be quoted once that phase is done. Do not mention hours or rates.';
+        if ($note = self::scopeNote($job['scope_mode'])) {
+            $parts[] = $note;
         }
 
         if ($phrase && $job['phrase_opens']) {
@@ -653,6 +654,62 @@ class Drafter
         }
 
         return implode("\n\n", $parts);
+    }
+
+    /**
+     * What a far-underpriced large job may offer (null = the full scope as usual):
+     * "skip" when the client insists on the complete scope at a fixed budget or the bid covers
+     * too little for even a planning phase; "first_phase" only when the hours the bid covers
+     * can genuinely build something; otherwise a paid "discovery" phase, if the client agrees.
+     *
+     * @param  array<string, mixed>  $price
+     */
+    public static function scopeMode(array $price, string $clientText): ?string
+    {
+        if (! ($price['reduce_scope'] ?? false)) {
+            return null;
+        }
+        $covered = (int) ($price['covered_hours'] ?? 0);
+
+        return match (true) {
+            ClientInstructions::requiresFullScope($clientText) => 'skip',
+            $covered >= (int) config('bidradar.profitability.min_build_phase_hours', 16) => 'first_phase',
+            $covered >= (int) config('bidradar.profitability.min_discovery_hours', 3) => 'discovery',
+            default => 'skip',
+        };
+    }
+
+    /** The owner-facing recommendation for a scope mode. Never changes the bid. */
+    private static function scopeWarning(?string $mode, ?int $covered, ?int $hours): ?string
+    {
+        return match ($mode) {
+            'skip' => sprintf('Recommended: skip this project. The bid covers about %d of the estimated %d hours, and %s. The draft does not present a partial solution as meeting the brief.',
+                (int) $covered, (int) $hours, (int) $covered < (int) config('bidradar.profitability.min_discovery_hours', 3)
+                    ? 'that is too little for even a planning phase'
+                    : 'the client asks for the complete scope at a fixed budget'),
+            'discovery' => sprintf('The bid covers about %d of the estimated %d hours: too little to build a working part of it. The draft offers a paid discovery and planning phase instead, if the client agrees.', (int) $covered, (int) $hours),
+            'first_phase' => sprintf('The bid covers about %d of the estimated %d hours. The draft offers a first phase only, sized to those hours, never the full scope.', (int) $covered, (int) $hours),
+            default => null,
+        };
+    }
+
+    /** For the model: what this bid may offer when it covers only part of the scope. */
+    private static function scopeNote(?string $mode): ?string
+    {
+        return match ($mode) {
+            'first_phase' => 'Scope and price: this bid covers only part of the full scope the brief describes. Do not offer the whole scope for '
+                .'this price. Propose a first phase that can genuinely be finished within the delivery time, name only what fits, and say '
+                .'the remaining phases would be quoted once that phase is done. Do not mention hours or rates.',
+            'discovery' => 'Scope and price: this bid is far too small to build any working part of what the brief describes. Do not offer to '
+                .'build any of it for this price. Offer a short paid discovery and planning phase, if the client agrees: review the '
+                .'requirements and the existing setup, map the main flows and risks, and deliver a written plan with phases and a quote '
+                .'for the build. Say plainly that the full build does not fit this budget and timeline. Do not mention hours or rates.',
+            'skip' => 'Scope and price: the client asks for the complete scope, which cannot be delivered for this budget and timeline. The '
+                .'freelancer has been advised to skip this project. Do not present a partial solution or a first phase as meeting the '
+                .'brief. Write a short, honest reply: what the full scope really involves, that it does not fit this budget and deadline, '
+                .'and that you can quote the complete build if the budget or timeline can change. Do not mention hours or rates.',
+            default => null,
+        };
     }
 
     /**

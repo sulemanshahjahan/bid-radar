@@ -167,13 +167,18 @@ return [
     'scope_warning_factor' => 2,
 
     // Effective hourly rate (take-home after the fee / estimated hours) against my hourly rate.
-    // Below warn_below x rate: a warning with options. Below reduce_scope_below x rate on a job
-    // over reduce_scope_min_hours: the draft offers a first phase instead of the full scope.
-    // Neither changes the bid.
+    // Under the rate: an information note. Below warn_below x rate: a warning with options.
+    // Below reduce_scope_below x rate on a job over reduce_scope_min_hours, the draft never
+    // offers the full scope (Drafter::scopeMode): a first build phase only if the bid covers
+    // at least min_build_phase_hours, else a paid discovery phase if it covers at least
+    // min_discovery_hours, else skip. A client demanding the complete scope at a fixed budget
+    // also means skip. Nothing here changes the bid.
     'profitability' => [
         'warn_below' => 0.5,
         'reduce_scope_below' => 0.25,
         'reduce_scope_min_hours' => 16,
+        'min_build_phase_hours' => 16,
+        'min_discovery_hours' => 3,
     ],
 
     // Delivery from the scoring estimate: hours x buffer / delivery_hours_per_day working

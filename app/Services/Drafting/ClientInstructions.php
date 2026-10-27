@@ -38,6 +38,18 @@ class ClientInstructions
         return $limit >= 20 ? $limit : null;
     }
 
+    /**
+     * True when the client insists on the complete scope for a fixed budget ("Need a complete
+     * marketplace ... Budget is fixed"): a partial phase would not meet the brief.
+     */
+    public static function requiresFullScope(string $brief): bool
+    {
+        $fixedBudget = '/\b(?:budget is (?:fixed|final|firm)|fixed budget|firm budget|non[- ]?negotiable|(?:can\'t|cannot|won\'t|will not) (?:pay|go) (?:more|above|over))\b/iu';
+        $completeScope = '/\b(?:complete|full|entire|whole|fully (?:working|functional)|all (?:of )?(?:the )?(?:features|functionality|requirements)|everything (?:above|listed|in the brief)|no phases|not in phases)\b/iu';
+
+        return (bool) preg_match($fixedBudget, $brief) && (bool) preg_match($completeScope, $brief);
+    }
+
     /** True when the client says the job is urgent or needed very soon. */
     public static function urgent(string $brief): bool
     {
