@@ -54,10 +54,29 @@ class ProposalV3FixesTest extends TestCase
         foreach (['Happy to hop on a quick Zoom call first.', 'We can discuss it on Zoom.', "Let's have a Zoom meeting with me.", 'A Zoom chat would help.'] as $text) {
             $this->assertNotEmpty(PostChecker::contactViolations($text, $brief), $text);
         }
+        // Any wording works for the integration itself (the v3 run lost Zoom over a phrasing like this).
+        $this->assertSame([], PostChecker::contactViolations("I'll switch on Zoom's waiting room. Classes run in Zoom.", $brief));
+        $this->assertNotEmpty(PostChecker::contactViolations('Meet me on Zoom tomorrow.', $brief));
+        $this->assertNotEmpty(PostChecker::contactViolations('Reach me on Zoom.', $brief));
+
+        // A brief that offers Zoom as a way to talk is an off-platform request, not an integration.
+        $offPlatform = 'Fix my header. Lets discuss the details on Zoom before you start.';
+        $this->assertSame([], PostChecker::integrationTools($offPlatform));
+        $this->assertNotEmpty(PostChecker::contactViolations('Sure, I can join a Zoom meeting.', $offPlatform));
+
         // And when the brief never mentions Zoom, any mention is still off-platform.
         $this->assertNotEmpty(PostChecker::contactViolations('I will set up the Zoom integration.', self::briefs()['D']['description']));
         $this->assertNotEmpty(PostChecker::contactViolations('I will set up the Zoom integration.'));
         $this->assertNotEmpty(PostChecker::contactViolations('Message me on WhatsApp.', $brief));
+    }
+
+    public function test_a_draft_that_hides_the_requested_zoom_integration_fails(): void
+    {
+        $draft = array_merge($this->draftReply(), ['is_hourly' => false, 'proposal_text' => $this->draftReply()['proposal_text'].' I will connect your meeting account through its API.']);
+
+        $failures = app(PostChecker::class)->check($draft, null, self::briefs()['I']['description'], 0, self::briefs()['I']['description'], '<fact_bank></fact_bank>');
+
+        $this->assertContains('The client asked for a Zoom integration: name it ("the Zoom integration", "your Zoom account") instead of a generic meeting tool.', $failures);
     }
 
     public function test_scenario_i_names_the_zoom_integration_and_passes_every_check(): void
