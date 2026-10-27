@@ -22,7 +22,7 @@ class PricingCalculator
     /**
      * @param  array<string, mixed>  $details  Project details (type, budget_min/max, currency, exchange_rate, bid_count, bid_avg)
      * @param  int|null  $estimatedHours  Hours the scoring model estimated for the full scope
-     * @return array{amount: float, currency: string, is_hourly: bool, minimum: float, reason: string, warning: string|null}
+     * @return array{amount: float, currency: string, is_hourly: bool, minimum: float, reason: string, warning: string|null, profit_warning?: string|null, covered_hours?: int|null, reduce_scope?: bool}
      */
     public function price(array $details, ?int $estimatedHours = null): array
     {
@@ -84,7 +84,46 @@ class PricingCalculator
         $result = $this->result($amount, $currency, false, $minimum, $reason, $warning);
         $result['reason'] .= $this->takeHome($result['amount'], $currency, $estimatedHours);
 
-        return $result;
+        return $result + $this->profitability($result['amount'], $currency, $rate, $max, $estimatedHours);
+    }
+
+    /**
+     * Effective hourly rate check: take-home after the fee, divided by the estimated hours,
+     * against my hourly rate. Never changes the bid; below the warn ratio it explains the
+     * options (full-scope price, a smaller first phase that fits, or skip). Far below on a
+     * larger job, the draft is told to offer that first phase instead of the full scope.
+     *
+     * @return array{profit_warning: string|null, covered_hours: int|null, reduce_scope: bool}
+     */
+    public function profitability(float $amount, string $currency, float $rate, float $budgetMax, ?int $hours): array
+    {
+        $none = ['profit_warning' => null, 'covered_hours' => null, 'reduce_scope' => false];
+        $target = $this->settings->float('hourly_rate_usd') / $rate;
+        if ($hours === null || $hours <= 0 || $target <= 0) {
+            return $none;
+        }
+
+        $keep = 1 - max(0, min(50, $this->settings->float('platform_fee_percent'))) / 100;
+        $effective = $amount * $keep / $hours;
+        if ($effective >= $target * (float) config('bidradar.profitability.warn_below', 0.5)) {
+            return $none;
+        }
+
+        $fullScope = ceil($hours * $target / $keep);
+        $covered = (int) floor($amount * $keep / $target);
+        $warning = sprintf(
+            'Below your hourly target: %s %s for about %d hours is %s %s/hour after the fee (target %s %s). Options: bid %s %s for the full scope%s, offer a first phase of about %d hours for %s %s, or skip it.',
+            $currency, self::fmt($amount), $hours, $currency, self::fmt(round($effective, 2)), $currency, self::fmt(round($target, 2)),
+            $currency, self::fmt($fullScope), $budgetMax > 0 && $fullScope > $budgetMax ? sprintf(' (above the client\'s budget of %s %s)', $currency, self::fmt($budgetMax)) : '',
+            $covered, $currency, self::fmt($amount),
+        );
+
+        return [
+            'profit_warning' => $warning,
+            'covered_hours' => $covered,
+            'reduce_scope' => $hours > (int) config('bidradar.profitability.reduce_scope_min_hours', 16)
+                && $effective < $target * (float) config('bidradar.profitability.reduce_scope_below', 0.25),
+        ];
     }
 
     /** "; take-home USD 153 after the 10% fee, about USD 38/hour for 4 hours". Information only: never moves the bid. */

@@ -45,18 +45,21 @@ class Drafter
         $category = (string) ($project->category ?? 'other');
         $categoryName = config('bidradar.categories.'.$category, $category);
         $dependencies = (array) $project->score('dependencies', []);
+        // A first-phase-only bid is delivered on the hours the price covers, not the full scope.
+        $deliveryHours = ($price['reduce_scope'] ?? false) ? max(1, (int) $price['covered_hours']) : $hours;
         $delivery = Turnaround::plan(
-            (string) $this->settings->get('turnaround_notes'), $category, $hours, count($dependencies),
+            (string) $this->settings->get('turnaround_notes'), $category, $deliveryHours, $dependencies,
             $this->settings->float('delivery_hours_per_day') ?: 6.0,
         );
         $days = $delivery['days'] ?? null;
 
         $warnings = array_values(array_filter([
             $price['warning'],
+            $price['profit_warning'] ?? null,
             $days === null ? sprintf('No turnaround set for "%s" in Settings: delivery left blank, set it yourself.', $categoryName) : null,
             ($delivery['outside_range'] ?? null) ? sprintf(
                 'Delivery of %d day%s from the %d-hour estimate is %s your usual %d-%d days for "%s": check it before bidding.',
-                $days, $days === 1 ? '' : 's', $hours, $delivery['outside_range'], $delivery['range'][0], $delivery['range'][1], $categoryName,
+                $days, $days === 1 ? '' : 's', $deliveryHours, $delivery['outside_range'], $delivery['range'][0], $delivery['range'][1], $categoryName,
             ) : null,
         ]));
 
@@ -88,9 +91,10 @@ class Drafter
         $baseContent = $this->userContent($project, $price, $days, $instruction, [
             'length' => $length,
             'phrase_opens' => $phraseOpens,
-            'hours' => $hours,
+            'hours' => $deliveryHours,
             'delivery' => $delivery,
             'urgent' => ClientInstructions::urgent($clientText),
+            'reduce_scope' => $price['reduce_scope'] ?? false,
         ]);
         $failures = [];
         $draft = null;
@@ -162,7 +166,7 @@ class Drafter
             'instruction' => $instruction ? mb_substr($instruction, 0, 250) : null,
             'attempts' => $attempts,
             'prompt_version' => self::PROMPT_VERSION,
-            'strategy' => ($draft['strategy'] ?? []) + ['size' => $length['size'], 'revised' => $revised],
+            'strategy' => ($draft['strategy'] ?? []) + ['size' => $length['size'], 'revised' => $revised, 'first_phase_only' => $price['reduce_scope'] ?? false],
         ]);
     }
 
@@ -478,6 +482,8 @@ class Drafter
             Safe commitments:
             - On a live site, say you work on a staging copy or with a backup first when the change could break
               something (checkout, plugins, theme files, migrations). Skip it for trivial CSS.
+            - If the client asks to integrate a meeting tool (Zoom, Google Meet), name it as what you integrate ("the
+              Zoom integration", "your Zoom account"); never offer it as a way to talk to the client.
             - Never ask the client to send passwords, logins or credentials in the chat. Ask for a staging copy or
               a temporary user they can remove afterwards, if access needs mentioning at all.
             - When the plan relies on an API, a platform feature or account access you have not seen, state the
@@ -625,6 +631,12 @@ class Drafter
         if ($days !== null && $days <= 2 && ($job['urgent'] || in_array($length['size'], ['quick', 'small'], true))) {
             $parts[] = "Delivery advantage: {$days} ".($days === 1 ? 'day' : 'days').($job['urgent'] ? ' for a client in a hurry' : ' for a small job')
                 .' is a real selling point. Put it in the opening two or three sentences, stated plainly.';
+        }
+
+        if ($job['reduce_scope']) {
+            $parts[] = 'Scope and price: this bid covers only a small part of the full scope the brief describes. Do not offer the '
+                .'whole scope for this price. Propose a clearly defined first phase that fits the bid and the delivery time, name '
+                .'what it includes, and say the remaining phases would be quoted once that phase is done. Do not mention hours or rates.';
         }
 
         if ($phrase && $job['phrase_opens']) {

@@ -31,6 +31,24 @@ class Draft extends Model
         return $this->belongsTo(Project::class);
     }
 
+    /** Still failing a hard check after the bounded retries: flagged for manual review, never treated as ready. */
+    public function needsReview(): bool
+    {
+        return ! empty($this->check_failures);
+    }
+
+    /** The "below your hourly target" pricing warning, if this bid has one. */
+    public function profitWarning(): ?string
+    {
+        foreach ($this->warnings ?? [] as $warning) {
+            if (str_starts_with((string) $warning, 'Below your hourly target')) {
+                return (string) $warning;
+            }
+        }
+
+        return null;
+    }
+
     /** The text to bid with: my edits if any, otherwise the generated proposal. */
     public function finalText(): string
     {

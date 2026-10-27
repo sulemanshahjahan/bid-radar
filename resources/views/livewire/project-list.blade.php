@@ -61,8 +61,8 @@
                         @elseif (in_array($project->ai_state, ['failed', 'cap_reached']))
                             <span class="text-red-600">{{ $project->ai_state === 'failed' ? 'AI error' : 'cap reached' }}</span>
                         @endif
-                        @if ($project->latestDraft?->check_failures)
-                            <span class="text-red-600">⚠ checks</span>
+                        @if ($project->latestDraft?->needsReview())
+                            <span class="text-red-600">⚠ needs review</span>
                         @endif
                     </div>
                     <p class="mt-1 truncate font-medium">{{ $project->displayTitle() }}</p>

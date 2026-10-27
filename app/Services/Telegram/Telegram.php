@@ -60,6 +60,17 @@ class Telegram
     /** Follow-up after an alert-first message: the proposal alone, then bid and delivery. */
     public function draftReady(Draft $draft): void
     {
+        // A draft that still fails a hard check is never sent as copy-ready text.
+        if ($draft->needsReview()) {
+            $project = $draft->project;
+            $this->send('⚠️ <b>Needs manual review</b>: the draft for <b>'.htmlspecialchars((string) $project->title, ENT_QUOTES | ENT_HTML5)
+                .'</b> failed some checks after '.$draft->attempts.' attempt'.($draft->attempts === 1 ? '' : 's').', so it is not sent here as ready to copy.'
+                ."\n- ".implode("\n- ", array_map(fn ($f) => htmlspecialchars((string) $f, ENT_QUOTES | ENT_HTML5), $draft->check_failures))
+                ."\nFix it in BidRadar before bidding.", self::alertButtons($project), true, 'alert_copy');
+
+            return;
+        }
+
         $this->sendDraftCopies($draft);
     }
 
@@ -95,6 +106,9 @@ class Telegram
             : 'Delivery: not set (no turnaround for this category)';
         if (! empty($draft->check_failures)) {
             $lines[] = '⚠️ This draft failed some checks: review it in BidRadar before bidding.';
+        }
+        if ($profit = $draft->profitWarning()) {
+            $lines[] = '⚠️ '.htmlspecialchars($profit, ENT_QUOTES | ENT_HTML5);
         }
 
         return implode("\n", $lines);

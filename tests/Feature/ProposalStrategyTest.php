@@ -54,21 +54,22 @@ class ProposalStrategyTest extends TestCase
     public function test_with_an_estimate_the_turnaround_range_is_only_advisory(): void
     {
         $notes = "Fix: 1-5 days\nOther: 3-5 days\nCheckout: 4 days\nNew build: 4-8 weeks";
-        $days = fn (string $cat, ?int $hours, int $deps = 0) => Turnaround::plan($notes, $cat, $hours, $deps)['days'] ?? null;
+        $days = fn (string $cat, ?int $hours, array $deps = []) => Turnaround::plan($notes, $cat, $hours, $deps)['days'] ?? null;
+        $membershipDeps = ['Lemon Squeezy account and API access', 'ARMember licence', 'Course videos from the client'];
 
         // The two v2 outputs the owner flagged.
         $this->assertSame(1, $days('other', 4), 'HTML5 cards, 4 hours: not 3 days because Other starts at 3.');
-        $this->assertSame(11, $days('new_build', 30, 3), 'Membership, 30 hours: 7 working days + 2 for dependencies = 9, plus a weekend. Not 28.');
+        $this->assertSame(11, $days('new_build', 30, $membershipDeps), 'Membership, 30 hours: 7 working days + 2 for dependencies = 9, plus a weekend. Not 28.');
 
         $this->assertSame(2, $days('fix', 8));
         $this->assertSame(17, $days('fix', 60), 'Past the range when the work needs it: realistic, and flagged.');
         $this->assertSame('above', Turnaround::plan($notes, 'fix', 60)['outside_range']);
-        $this->assertSame('below', Turnaround::plan($notes, 'new_build', 30, 3)['outside_range']);
+        $this->assertSame('below', Turnaround::plan($notes, 'new_build', 30, $membershipDeps)['outside_range']);
         $this->assertSame(5, $days('fix', null), 'No estimate: the top of the range, as before.');
-        $this->assertSame(1, $days('fix', 3, 2), 'A one-day job waits on nobody.');
+        $this->assertSame(1, $days('fix', 3, ['Stripe API keys', 'Plugin licence']), 'A one-day job waits on nobody.');
         $this->assertNull($days('security', 3), 'No line for the category: no guess.');
 
-        $slower = Turnaround::plan($notes, 'fix', 12, 0, 3);
+        $slower = Turnaround::plan($notes, 'fix', 12, [], 3);
         $this->assertSame([5, 7], [$slower['working_days'], $slower['days']], 'Fewer hours a day for this project: more days.');
     }
 

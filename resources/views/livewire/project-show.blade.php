@@ -152,9 +152,10 @@
                 </div>
             @endif
 
-            @if ($draft->check_failures)
+            @if ($draft->needsReview())
                 <div class="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">
-                    <p class="font-semibold">This draft failed some checks. Fix them before bidding:</p>
+                    <p class="font-semibold">Needs manual review: not ready to send</p>
+                    <p class="mt-0.5">This draft still failed these checks after {{ $draft->attempts }} {{ $draft->attempts === 1 ? 'attempt' : 'attempts' }}. Fix them before bidding:</p>
                     <ul class="mt-1 list-disc pl-5">
                         @foreach ($draft->check_failures as $failure) <li>{{ $failure }}</li> @endforeach
                     </ul>
@@ -167,8 +168,8 @@
                 @if ($draft->edited_text !== null) Edited. @endif
             </p>
 
-            <button type="button" class="btn-primary w-full py-3.5 text-base"
-                    x-on:click="copyText($wire.editedText, 'Proposal copied')">Copy proposal</button>
+            <button type="button" class="{{ $draft->needsReview() ? 'btn' : 'btn-primary' }} w-full py-3.5 text-base"
+                    x-on:click="copyText($wire.editedText, 'Proposal copied')">{{ $draft->needsReview() ? 'Copy anyway (needs review)' : 'Copy proposal' }}</button>
 
             <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 <button type="button" class="btn flex-col py-2.5"
