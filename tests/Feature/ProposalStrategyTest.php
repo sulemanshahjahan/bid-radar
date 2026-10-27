@@ -11,9 +11,11 @@ use App\Models\User;
 use App\Services\Drafting\ClientInstructions;
 use App\Services\Drafting\Drafter;
 use App\Services\Drafting\PostChecker;
+use App\Services\Drafting\PricingCalculator;
 use App\Services\Drafting\ProposalLength;
 use App\Services\Drafting\ProposalQuality;
 use App\Services\Drafting\Turnaround;
+use App\Services\Scoring\Scorer;
 use App\Services\Settings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -49,33 +51,47 @@ class ProposalStrategyTest extends TestCase
 
     // --- Delivery sized to the job -------------------------------------------
 
-    public function test_delivery_is_sized_from_the_estimate_inside_the_turnaround_range(): void
+    public function test_with_an_estimate_the_turnaround_range_is_only_advisory(): void
     {
-        $notes = "Fix: 1-5 days\nCheckout: 4 days\nNew build: 2-4 weeks";
+        $notes = "Fix: 1-5 days\nOther: 3-5 days\nCheckout: 4 days\nNew build: 4-8 weeks";
+        $days = fn (string $cat, ?int $hours, int $deps = 0) => Turnaround::plan($notes, $cat, $hours, $deps)['days'] ?? null;
 
-        $this->assertSame(1, Turnaround::estimate($notes, 'fix', 3), 'A 3-hour job is not a 5-day job.');
-        $this->assertSame(2, Turnaround::estimate($notes, 'fix', 8));
-        $this->assertSame(5, Turnaround::estimate($notes, 'fix', 60), 'Never past the top of the range.');
-        $this->assertSame(5, Turnaround::estimate($notes, 'fix', null), 'No estimate: the top of the range, as before.');
-        $this->assertSame(1, Turnaround::estimate($notes, 'checkout_payment', 2), 'A single figure is the most it takes.');
-        $this->assertSame(14, Turnaround::estimate($notes, 'new_build', 10), 'Never under the bottom of a range.');
-        $this->assertNull(Turnaround::estimate($notes, 'security', 3), 'No line for the category: no guess.');
-        $this->assertSame([14, 28], Turnaround::range($notes, 'new_build'));
+        // The two v2 outputs the owner flagged.
+        $this->assertSame(1, $days('other', 4), 'HTML5 cards, 4 hours: not 3 days because Other starts at 3.');
+        $this->assertSame(11, $days('new_build', 30, 3), 'Membership, 30 hours: 7 working days + 2 for dependencies = 9, plus a weekend. Not 28.');
+
+        $this->assertSame(2, $days('fix', 8));
+        $this->assertSame(17, $days('fix', 60), 'Past the range when the work needs it: realistic, and flagged.');
+        $this->assertSame('above', Turnaround::plan($notes, 'fix', 60)['outside_range']);
+        $this->assertSame('below', Turnaround::plan($notes, 'new_build', 30, 3)['outside_range']);
+        $this->assertSame(5, $days('fix', null), 'No estimate: the top of the range, as before.');
+        $this->assertSame(1, $days('fix', 3, 2), 'A one-day job waits on nobody.');
+        $this->assertNull($days('security', 3), 'No line for the category: no guess.');
+
+        $slower = Turnaround::plan($notes, 'fix', 12, 0, 3);
+        $this->assertSame([5, 7], [$slower['working_days'], $slower['days']], 'Fewer hours a day for this project: more days.');
+    }
+
+    public function test_working_days_become_calendar_days(): void
+    {
+        $this->assertSame([1, 4, 7, 8, 14, 15], array_map(Turnaround::calendarDays(...), [1, 4, 5, 6, 10, 11]));
     }
 
     public function test_the_card_section_gets_a_short_delivery_and_a_short_target(): void
     {
-        app(Settings::class)->set(['turnaround_notes' => 'Fix: 1-5 days']);
-        $project = $this->briefProject('B', ['client_test_phrase' => 'I Got This', 'estimated_hours' => 3]);
+        app(Settings::class)->set(['turnaround_notes' => 'Fix: 3-5 days']);
+        $project = $this->briefProject('B', ['client_test_phrase' => 'I Got This', 'estimated_hours' => 4]);
         $this->claude->reply($this->draftReply(['proposal_text' => $this->cardProposal()]), 'claude-sonnet-5-5');
 
         $draft = app(Drafter::class)->draft($project);
 
         $content = $this->claude->requests[0]->userContent;
-        $this->assertSame(1, $draft->delivery_days, 'The old engine said 5 days here.');
-        $this->assertStringContainsString('Delivery time: 1 day. (sized by code from about 3 hours of work', $content);
+        $this->assertSame(1, $draft->delivery_days, 'v1 said 5 days here, v2 said 3.');
+        $this->assertStringContainsString('Delivery time: 1 day. Calendar days, set by code: about 4 hours of work is 1 working day', $content);
+        $this->assertStringContainsString('Delivery advantage: 1 day for a client in a hurry', $content);
         $this->assertStringContainsString('Job size: small. Word target: 80-130 words', $content);
         $this->assertStringContainsString('Required opening: the client told bidders to begin with "I Got This"', $content);
+        $this->assertContains('Delivery of 1 day from the 4-hour estimate is below your usual 3-5 days for "Fix": check it before bidding.', $draft->warnings);
         $this->assertNull($draft->check_failures);
     }
 
@@ -137,11 +153,14 @@ class ProposalStrategyTest extends TestCase
 
     public function test_length_follows_the_size_of_the_job(): void
     {
-        $this->assertSame('small', ProposalLength::for(3, 'other', 80, 250)['size']);
+        $this->assertSame('quick', ProposalLength::for(3, 'other', 80, 250)['size']);
+        $this->assertSame('small', ProposalLength::for(5, 'other', 80, 250)['size']);
         $this->assertSame([120, 180], array_values(array_intersect_key(ProposalLength::for(20, 'fix', 80, 250), array_flip(['target_min', 'target_max']))));
         $complex = ProposalLength::for(120, 'new_build', 80, 250);
         $this->assertSame(['complex', 160, 250, 250], [$complex['size'], $complex['target_min'], $complex['target_max'], $complex['max']]);
-        $this->assertSame(163, ProposalLength::for(3, 'fix', 80, 250)['max'], 'A small fix fails the check well before 250 words.');
+        $this->assertSame(163, ProposalLength::for(5, 'fix', 80, 250)['max'], 'A small fix fails the check well before 250 words.');
+        $quick = ProposalLength::for(2, 'fix', 80, 250);
+        $this->assertSame([60, 100, 60, 125], [$quick['target_min'], $quick['target_max'], $quick['min'], $quick['max']], 'A quick fix may be shorter than the Settings minimum.');
         $this->assertSame(150, ProposalLength::for(120, 'new_build', 80, 150)['max'], 'Never past the owner\'s own maximum.');
         $this->assertSame('small', ProposalLength::for(null, 'fix', 80, 250)['size']);
         $this->assertSame('medium', ProposalLength::for(null, 'new_build', 80, 250)['size']);
@@ -358,6 +377,133 @@ class ProposalStrategyTest extends TestCase
         $this->assertSame(0, Project::query()->count(), 'Nothing saved.');
         $this->assertSame(0, Draft::query()->count());
         $this->assertSame(2, ApiCall::query()->whereNull('project_id')->count(), 'The spend still counts toward the cap.');
+    }
+
+    // --- v3: scope coverage, safe commitments, urgency, pricing -----------------
+
+    /** The v2 membership draft the owner reviewed (brief A, real output). */
+    private const V2_MEMBERSHIP = "Lemon Squeezy takes payment on its own checkout, so ARMember won't know who bought the course unless something tells it. That handoff is the part to get right. A webhook from Lemon Squeezy creates or activates the ARMember account on purchase and removes access on refund. This needs a small piece of custom PHP, not a plugin setting.\n\n"
+        ."For the partner program, I'd use Lemon Squeezy's built-in affiliates rather than a separate plugin. Commissions are tracked where the sale happens, so there's nothing to sync.\n\n"
+        .'In 28 days you get the homepage, the FAQ and terms pages, and the gated course page with embedded videos and the PDF. The purchase-to-access flow is tested end to end.';
+
+    public function test_a_requested_deliverable_left_out_of_the_proposal_is_caught(): void
+    {
+        $deliverables = ['Homepage with videos and testimonials', 'FAQ and terms pages', 'Lemon Squeezy checkout', 'Partner program page', 'Sign up / login page', 'Members-only course page with PDF'];
+
+        $this->assertSame(['Sign up / login page'], PostChecker::missingDeliverables(self::V2_MEMBERSHIP, $deliverables));
+        $this->assertSame([], PostChecker::missingDeliverables(self::V2_MEMBERSHIP.' Members register and log in on their own page.', $deliverables), 'Different words for the same page are fine.');
+        $this->assertSame([], PostChecker::missingDeliverables('Anything.', []), 'Old projects without deliverables are not checked.');
+    }
+
+    public function test_missing_deliverables_send_the_draft_back_with_the_list(): void
+    {
+        $project = $this->makeProject([], [], $this->scoringReply(['deliverables' => ['Stripe checkout fix', 'Abandoned cart reminders']]));
+        $fixed = $this->draftReply()['proposal_text'].' Abandoned cart reminders get tested too.';
+        $this->claude
+            ->reply($this->draftReply(), 'claude-sonnet-5-5')
+            ->reply($this->draftReply(['proposal_text' => $fixed]), 'claude-sonnet-5-5');
+
+        $draft = app(Drafter::class)->draft($project);
+
+        $this->assertStringContainsString('Major deliverables (the proposal must cover every one', $this->claude->requests[0]->userContent);
+        $this->assertStringContainsString('Does not mention these requested deliverables: Abandoned cart reminders.', $this->claude->requests[1]->userContent);
+        $this->assertNull($draft->check_failures);
+    }
+
+    public function test_scoring_keeps_deliverables_and_dependencies_and_they_lengthen_delivery(): void
+    {
+        $scoring = Scorer::normalize($this->scoringReply([
+            'deliverables' => ['Homepage', '', 'Login page'],
+            'dependencies' => ['Lemon Squeezy account access', 'Course videos from the client', 'ARMember licence'],
+            'estimated_hours' => 30,
+            'category' => 'new_build',
+        ]));
+        $this->assertSame(['Homepage', 'Login page'], $scoring['deliverables']);
+        $this->assertContains('dependencies', Scorer::schema()['required']);
+
+        app(Settings::class)->set(['turnaround_notes' => 'New build: 4-8 weeks']);
+        $project = $this->makeProject([], [], $scoring);
+        $this->claude->reply($this->draftReply(['proposal_text' => $this->draftReply()['proposal_text'].' The homepage and login page come first.']), 'claude-sonnet-5-5');
+
+        $draft = app(Drafter::class)->draft($project);
+
+        $this->assertSame(11, $draft->delivery_days, 'v2 said 28.');
+        $content = $this->claude->requests[0]->userContent;
+        $this->assertStringContainsString("Depends on (outside the freelancer's control", $content);
+        $this->assertStringContainsString('9 working days including 2 for the dependencies listed above', $content);
+        $this->assertStringNotContainsString('Delivery advantage', $content, 'An 11-day build is not sold on speed.');
+    }
+
+    public function test_asking_for_passwords_in_chat_fails(): void
+    {
+        $this->assertNotNull(PostChecker::credentialRequest('Please send me your admin password and I will start.'));
+        $this->assertNotNull(PostChecker::credentialRequest('Share the wp-admin login details here.'));
+        $this->assertNull(PostChecker::credentialRequest('The login page needs to send members straight to the course.'));
+        $this->assertNull(PostChecker::credentialRequest('A staging copy or a temporary user you can remove afterwards is all I need.'));
+    }
+
+    public function test_an_urgent_css_fix_is_quick_and_leads_with_the_delivery(): void
+    {
+        $b = self::briefs()['F'];
+        $this->assertTrue(ClientInstructions::urgent($b['description']));
+        $this->assertFalse(ClientInstructions::urgent(self::briefs()['G']['description']));
+
+        app(Settings::class)->set(['turnaround_notes' => 'Fix: 1-2 days']);
+        $project = $this->briefProject('F', ['estimated_hours' => 1]);
+        $text = 'An overlapping menu button and logo since yesterday usually means a header width or flex rule changed, often after an update. '
+            .'I would fix the header CSS for the mobile breakpoints only, so the desktop header stays as it is, and check it on real phone sizes. '
+            .'Delivery in 1 day. Send the page link in the Freelancer chat and I can begin.';
+        $this->claude->reply($this->draftReply(['proposal_text' => $text]), 'claude-sonnet-5-5');
+
+        $draft = app(Drafter::class)->draft($project);
+
+        $content = $this->claude->requests[0]->userContent;
+        $this->assertStringContainsString('Job size: quick. Word target: 60-100 words', $content);
+        $this->assertStringContainsString('Delivery advantage: 1 day for a client in a hurry', $content);
+        $this->assertNull($draft->check_failures, implode(' ', $draft->check_failures ?? []));
+    }
+
+    public function test_the_price_reason_shows_take_home_after_the_fee_without_moving_the_bid(): void
+    {
+        app(Settings::class)->set(['hourly_rate_usd' => 25, 'platform_fee_percent' => 10]);
+
+        $p = app(PricingCalculator::class)->price(
+            ['type' => 'fixed', 'currency' => 'USD', 'exchange_rate' => 1, 'budget_min' => 30, 'budget_max' => 250, 'bid_count' => 25, 'bid_avg' => 90],
+            4,
+        );
+
+        $this->assertSame(86.0, $p['amount'], 'Still 95% of the average bid.');
+        $this->assertStringEndsWith('; take-home USD 77 after the 10% fee, about USD 19/hour for 4 hours', $p['reason']);
+    }
+
+    public function test_the_prompt_covers_scope_safe_commitments_and_authority(): void
+    {
+        $project = $this->makeProject([], [], $this->scoringReply());
+        $this->claude->reply($this->draftReply(), 'claude-sonnet-5-5');
+
+        $draft = app(Drafter::class)->draft($project);
+
+        $rules = $this->claude->requests[0]->system[0]['text'];
+        $this->assertStringContainsString('pair one specific insight with one real reason to trust it', $rules);
+        $this->assertStringContainsString('never claim a number of similar jobs the fact bank does not state', $rules);
+        $this->assertStringContainsString('Cover the whole brief.', $rules);
+        $this->assertStringContainsString('Never ask the client to send passwords', $rules);
+        $this->assertStringContainsString('duplicate or late webhook deliveries', $rules);
+        $this->assertStringContainsString('state the', $rules);
+        $this->assertSame('v3-coverage', $draft->prompt_version);
+    }
+
+    public function test_delivery_hours_and_fee_are_saved_from_settings(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        Livewire::test(SettingsPage::class)
+            ->set('form.delivery_hours_per_day', 4)
+            ->set('form.platform_fee_percent', 10)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertSame(4.0, app(Settings::class)->float('delivery_hours_per_day'));
     }
 
     // --- Helpers ----------------------------------------------------------------

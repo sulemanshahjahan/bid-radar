@@ -26,6 +26,7 @@ class SettingsPage extends Component
         'threshold_high', 'threshold_medium', 'daily_spend_cap_usd', 'weekly_bid_cap',
         'hourly_rate_usd', 'floor_price_usd', 'avg_bid_factor_low', 'avg_bid_factor_high',
         'word_min', 'word_max', 'poll_interval_seconds', 'sponsor_min_budget_usd',
+        'platform_fee_percent', 'delivery_hours_per_day',
     ];
 
     private const BOOLEANS = ['quiet_alerts', 'polling_enabled', 'paused', 'rank_rebuild'];
@@ -102,6 +103,8 @@ class SettingsPage extends Component
             'form.floor_price_usd' => 'required|numeric|min:0',
             'form.avg_bid_factor_low' => 'required|numeric|between:0.5,1.5',
             'form.avg_bid_factor_high' => 'required|numeric|between:0.5,1.5|gte:form.avg_bid_factor_low',
+            'form.platform_fee_percent' => 'required|numeric|between:0,50',
+            'form.delivery_hours_per_day' => 'required|numeric|between:1,16',
             'form.word_min' => 'required|integer|min:30',
             'form.word_max' => 'required|integer|gt:form.word_min|max:400',
             'form.scoring_model' => 'required|string|in:'.implode(',', array_keys(config('bidradar.prices'))),

@@ -38,6 +38,12 @@ class ClientInstructions
         return $limit >= 20 ? $limit : null;
     }
 
+    /** True when the client says the job is urgent or needed very soon. */
+    public static function urgent(string $brief): bool
+    {
+        return (bool) preg_match('/\b(?:urgent(?:ly)?|asap|a\.s\.a\.p|immediately|right away|today|tonight|tomorrow|within (?:24|48) hours|quick(?:ly)?|fast turnaround|deliver quickly|as soon as possible|available now)\b/iu', $brief);
+    }
+
     /** True when the proposal starts with the phrase: same words in order, any case, punctuation free. */
     public static function opensWith(string $text, ?string $phrase): bool
     {

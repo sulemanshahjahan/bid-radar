@@ -29,7 +29,7 @@ class PostChecker
      * @param  string  $sourceText  Fact bank + brief: the only allowed source of numbers.
      * @param  string|null  $briefText  The client's brief alone: the only allowed source of a proposed stack.
      * @param  string|null  $factBankText  The fact bank alone: the only allowed source of extras like free support.
-     * @param  array{word_min?: int, word_max?: int, client_word_limit?: int|null, phrase_opens?: bool}  $rules  Per-draft limits (ProposalLength, ClientInstructions); Settings when absent.
+     * @param  array{word_min?: int, word_max?: int, client_word_limit?: int|null, phrase_opens?: bool, deliverables?: list<string>}  $rules  Per-draft limits (ProposalLength, ClientInstructions); Settings when absent.
      * @return list<string>
      */
     public function check(array $draft, ?string $testPhrase, string $sourceText, float $minimumBid = 0, ?string $briefText = null, ?string $factBankText = null, array $rules = []): array
@@ -63,6 +63,12 @@ class PostChecker
         }
         if ($phrase = self::conflictingDelivery($text, $draft['delivery_days'] ?? null)) {
             $failures[] = "Delivery in the text (\"{$phrase}\") differs from the bid's delivery time.";
+        }
+        if ($missing = self::missingDeliverables($text, $rules['deliverables'] ?? [])) {
+            $failures[] = 'Does not mention these requested deliverables: '.implode('; ', $missing).'. Cover each one briefly, grouped naturally.';
+        }
+        if ($phrase = self::credentialRequest($text)) {
+            $failures[] = "Asks for passwords or logins in chat (\"{$phrase}\"); ask for a staging copy or a temporary user instead.";
         }
         if (self::stepList($text)) {
             $failures[] = 'Reads like a step list (First... Then... Finally...); describe the work in a sentence or two.';
@@ -347,6 +353,64 @@ class PostChecker
         }
 
         return null;
+    }
+
+    /** Words that say nothing about which deliverable is meant ("page", "setup"). */
+    private const DELIVERABLE_FILLER = [
+        'page', 'pages', 'site', 'website', 'section', 'sections', 'setup', 'with', 'from', 'that', 'this', 'into',
+        'using', 'build', 'create', 'custom', 'full', 'main', 'only', 'your', 'their', 'need', 'needs', 'new', 'and',
+        'for', 'the', 'add', 'integration', 'system', 'feature', 'features', 'option', 'options', 'functionality',
+    ];
+
+    /** Same meaning, different words: normalised on both sides before matching. */
+    private const SYNONYMS = [
+        '/\b(?:sign|log)[\s-]?in\b/i' => 'login',
+        '/\b(?:sign[\s-]?up|register|registration)\b/i' => 'signup',
+        '/\baffiliates?\b/i' => 'partner',
+        '/\bpartners?\b/i' => 'partner',
+        '/\bfaqs?\b/i' => 'faq',
+        '/\bterms(?: and conditions| of service| of use)?\b/i' => 'terms',
+    ];
+
+    /**
+     * Requested deliverables (from scoring) with no recognisable word in the proposal.
+     * Loose on purpose: one distinctive word (first five letters) is enough, so wording can vary.
+     *
+     * @param  list<string>  $deliverables
+     * @return list<string>
+     */
+    public static function missingDeliverables(string $text, array $deliverables): array
+    {
+        $stems = array_flip(self::stems($text));
+        $missing = [];
+        foreach ($deliverables as $deliverable) {
+            $wanted = self::stems((string) $deliverable);
+            if ($wanted !== [] && array_intersect_key(array_flip($wanted), $stems) === []) {
+                $missing[] = trim((string) $deliverable);
+            }
+        }
+
+        return $missing;
+    }
+
+    /** @return list<string> */
+    private static function stems(string $text): array
+    {
+        $text = preg_replace(array_keys(self::SYNONYMS), array_values(self::SYNONYMS), $text);
+        preg_match_all('/[\p{L}\p{N}]+/u', mb_strtolower($text), $m);
+
+        return array_values(array_unique(array_map(
+            fn ($w) => mb_substr($w, 0, 5),
+            array_filter($m[0], fn ($w) => mb_strlen($w) >= 3 && ! in_array($w, self::DELIVERABLE_FILLER, true)),
+        )));
+    }
+
+    /** "Send me your admin password": access should come as a staging copy or a temporary user, never the owner's login. */
+    public static function credentialRequest(string $text): ?string
+    {
+        $pattern = '/\b(?:send|share|give|provide|post|need)\b[^.?!]{0,30}?\b(?:(?:admin|wp-admin|cpanel|hosting|ftp|your)\s+)?(?:passwords?|credentials|login details)\b/iu';
+
+        return preg_match($pattern, $text, $m) ? $m[0] : null;
     }
 
     /** Three or more sentences opening with First / Then / Next / Finally reads like a school assignment. */
