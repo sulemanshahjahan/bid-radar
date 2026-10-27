@@ -93,11 +93,11 @@ class PricingCalculator
      * options (full-scope price, a smaller first phase that fits, or skip). Far below on a
      * larger job, the draft is told to offer that first phase instead of the full scope.
      *
-     * @return array{profit_warning: string|null, covered_hours: int|null, reduce_scope: bool}
+     * @return array{profit_warning: string|null, profit_info: string|null, covered_hours: int|null, reduce_scope: bool}
      */
     public function profitability(float $amount, string $currency, float $rate, float $budgetMax, ?int $hours): array
     {
-        $none = ['profit_warning' => null, 'covered_hours' => null, 'reduce_scope' => false];
+        $none = ['profit_warning' => null, 'profit_info' => null, 'covered_hours' => null, 'reduce_scope' => false];
         $target = $this->settings->float('hourly_rate_usd') / $rate;
         if ($hours === null || $hours <= 0 || $target <= 0) {
             return $none;
@@ -105,8 +105,15 @@ class PricingCalculator
 
         $keep = 1 - max(0, min(50, $this->settings->float('platform_fee_percent'))) / 100;
         $effective = $amount * $keep / $hours;
-        if ($effective >= $target * (float) config('bidradar.profitability.warn_below', 0.5)) {
+        if ($effective >= $target) {
             return $none;
+        }
+        if ($effective >= $target * (float) config('bidradar.profitability.warn_below', 0.5)) {
+            // Under target but not far under: information only, nothing else changes.
+            return ['profit_info' => sprintf(
+                'Under your hourly target (information only): about %s %s/hour after the fee for %d hours, against your %s %s.',
+                $currency, self::fmt(round($effective, 2)), $hours, $currency, self::fmt(round($target, 2)),
+            )] + $none;
         }
 
         $fullScope = ceil($hours * $target / $keep);
@@ -120,6 +127,7 @@ class PricingCalculator
 
         return [
             'profit_warning' => $warning,
+            'profit_info' => null,
             'covered_hours' => $covered,
             'reduce_scope' => $hours > (int) config('bidradar.profitability.reduce_scope_min_hours', 16)
                 && $effective < $target * (float) config('bidradar.profitability.reduce_scope_below', 0.25),

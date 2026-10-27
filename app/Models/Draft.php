@@ -37,12 +37,14 @@ class Draft extends Model
         return ! empty($this->check_failures);
     }
 
-    /** The "below your hourly target" pricing warning, if this bid has one. */
+    /** The strongest pricing warning on this bid: a skip recommendation first, then "below your hourly target". */
     public function profitWarning(): ?string
     {
-        foreach ($this->warnings ?? [] as $warning) {
-            if (str_starts_with((string) $warning, 'Below your hourly target')) {
-                return (string) $warning;
+        foreach (['Recommended: skip', 'Below your hourly target'] as $prefix) {
+            foreach ($this->warnings ?? [] as $warning) {
+                if (str_starts_with((string) $warning, $prefix)) {
+                    return (string) $warning;
+                }
             }
         }
 

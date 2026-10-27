@@ -92,6 +92,6 @@ return [
         'description' => "Need a complete multi-vendor marketplace on WooCommerce with vendor dashboards, commissions and payouts.\n"
             .'Must be delivered in 2 days and must not use any plugins at all. Budget is fixed.',
         'details' => ['budget_min' => 100, 'budget_max' => 200, 'skills' => ['WooCommerce', 'WordPress', 'PHP'], 'bid_count' => 22, 'bid_avg' => 160],
-        'expect' => 'Names the conflict (2 days and no plugins vs a full marketplace); at USD 200 for about 160 hours: a below-target warning and a first phase only, never the full scope; promises neither.',
+        'expect' => 'Names the conflict (2 days and no plugins vs a full marketplace); complete scope at a fixed USD 200 budget for about 160 hours: recommended skip, and the draft offers no partial solution as if it met the brief; promises neither.',
     ],
 ];
