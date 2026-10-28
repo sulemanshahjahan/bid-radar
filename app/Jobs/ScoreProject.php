@@ -125,7 +125,12 @@ class ScoreProject implements ShouldQueue
             'rank_rebuild' => (bool) $settings->get('rank_rebuild'),
             'base_score' => $adjusted['base'],
             'score' => $adjusted['score'],
-            'adjustments' => array_map(fn ($a) => ['label' => self::ruleLabel($a['label']), 'points' => $a['points']], $adjusted['adjustments']),
+            // Client-derived adjustments (payment status, client rating/history) are Freelancer client data:
+            // left out here. The score above still includes them; they are just not itemized.
+            'adjustments' => array_values(array_map(
+                fn ($a) => ['label' => self::ruleLabel($a['label']), 'points' => $a['points']],
+                array_filter($adjusted['adjustments'], fn ($a) => ! self::isClientLabel($a['label'])),
+            )),
             'category' => $result['category'] ?? null,
             'estimated_hours' => $result['estimated_hours'] ?? null,
             'quick_fix' => $result['quick_fix'] ?? null,
@@ -141,6 +146,12 @@ class ScoreProject implements ShouldQueue
     public static function ruleLabel(string $label): string
     {
         return trim((string) preg_replace(['/^\d+\s+bids\b/', '/\s*\(\$[\d.,]+\)/'], ['bids', ''], $label));
+    }
+
+    /** Rank rebuild adjustments that come from the client's payment status or reputation (ScoreAdjuster). */
+    public static function isClientLabel(string $label): bool
+    {
+        return str_starts_with($label, 'payment ') || str_starts_with($label, 'client ');
     }
 
     /** Null for the payment blocker: client payment status is not retained. */
