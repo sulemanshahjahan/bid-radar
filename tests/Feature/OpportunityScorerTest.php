@@ -370,7 +370,7 @@ class OpportunityScorerTest extends TestCase
         $o = $this->evaluate('R2');
 
         $this->assertSame('B', $o->class);
-        $this->assertStringContainsString('Low-fit exception', implode(' ', $o->rules));
+        $this->assertStringStartsWith('Low-fit exception', $o->rules[0], 'The rule that set the class comes first');
         $this->assertContains('Experience credit limited: technical fit is weak, so past work counts for less.', $o->rules);
     }
 

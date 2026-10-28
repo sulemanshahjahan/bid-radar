@@ -1,4 +1,4 @@
-<div class="space-y-4">
+<div class="space-y-4" wire:loading.class="opacity-60">
     <div class="flex flex-wrap items-center gap-2">
         <h1 class="text-xl font-semibold">Opportunities</h1>
         <span class="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-800">Shadow mode · experimental</span>
@@ -60,10 +60,10 @@
                     <p class="mt-1 truncate font-medium">{{ $p->displayTitle() }}</p>
                     @if ($o)
                         @if ($o->strengths)
-                            <p class="mt-1 text-xs text-emerald-800">+ {{ implode(' · ', array_slice($o->strengths, 0, 3)) }}</p>
+                            <p class="mt-1 line-clamp-3 text-xs text-emerald-800">+ {{ implode(' · ', array_slice($o->strengths, 0, 3)) }}</p>
                         @endif
                         @if ($o->risks)
-                            <p class="mt-0.5 text-xs text-amber-800">− {{ implode(' · ', array_slice($o->risks, 0, 2)) }}</p>
+                            <p class="mt-0.5 line-clamp-2 text-xs text-amber-800">− {{ implode(' · ', array_slice($o->risks, 0, 2)) }}</p>
                         @endif
                         @if ($o->rules)
                             <p class="mt-0.5 text-xs text-violet-800">Rule: {{ $o->rules[0] }}</p>
@@ -74,6 +74,8 @@
             </div>
         </a>
     @empty
-        <div class="card text-center text-sm text-slate-500">No scored projects in the last 24 hours.</div>
+        <div class="card text-center text-sm text-slate-500">
+            {{ $shortlist && $total > 0 ? 'No A or B projects right now. Turn off the shortlist to see the rest.' : 'No scored projects in the last 24 hours.' }}
+        </div>
     @endforelse
 </div>

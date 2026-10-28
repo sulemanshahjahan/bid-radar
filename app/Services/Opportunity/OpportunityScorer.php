@@ -130,11 +130,11 @@ class OpportunityScorer
             default => 'C',
         };
         if ($score >= $classA && $class !== 'A' && ! $lowFit) {
-            $rules[] = 'Not a strong specialist opportunity: '.match (true) {
+            array_unshift($rules, 'Not a strong specialist opportunity: '.match (true) {
                 ! $specialistProof => 'no comparable past project is documented.',
                 ! $profitOk => 'the budget is not known to fit the effort.',
                 default => 'competition is already heavy.',
-            };
+            });
         }
         if ($lowFit) {
             $exception = $experience['strength'] === ProfileEvidence::STRONG;
@@ -142,9 +142,9 @@ class OpportunityScorer
             if ($class < $cap) {
                 $class = $cap;
             }
-            $rules[] = $exception
+            array_unshift($rules, $exception
                 ? "Low-fit exception: the scoring model rates it {$base}/100, but the brief names work that matches a comparable past project. Capped at B."
-                : "Low technical fit: the scoring model rates it {$base}/100. Capped at C.";
+                : "Low technical fit: the scoring model rates it {$base}/100. Capped at C.");
         }
 
         return new Opportunity(
