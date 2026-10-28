@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Livewire\ProjectShow;
 use App\Livewire\StatsPage;
+use App\Models\BidSnapshot;
 use App\Models\Project;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -45,6 +46,37 @@ class OutcomeTrackingTest extends TestCase
         $this->assertSame('bid_placed', $project->status);
         $this->assertSame(12, $project->my_bid_rank);
         $this->assertSame(40, $project->bid_count_at_bid);
+    }
+
+    public function test_bid_placed_stores_the_last_observed_bid_count_and_when_it_was_seen_once(): void
+    {
+        $project = $this->makeProject(['source' => 'freelancer'], ['bid_count' => 33], $this->scoringReply());
+        BidSnapshot::query()->create(['project_id' => $project->id, 'bid_count' => 20, 'recorded_at' => now()->subMinutes(9)]);
+        BidSnapshot::query()->create(['project_id' => $project->id, 'bid_count' => 33, 'recorded_at' => now()->subMinutes(4)]);
+
+        Livewire::test(ProjectShow::class, ['project' => $project])->set('myBid', 175)->call('markBidPlaced')->assertHasNoErrors();
+
+        $project->refresh();
+        $this->assertSame(33, $project->bid_count_observed);
+        $this->assertTrue($project->bid_count_observed_at->equalTo(now()->subMinutes(4)), 'When BidRadar saw it, not when I clicked');
+
+        // Later outcome updates (rank, typed total, more snapshots) never change it.
+        BidSnapshot::query()->create(['project_id' => $project->id, 'bid_count' => 140, 'recorded_at' => now()->addHour()]);
+        Livewire::test(ProjectShow::class, ['project' => $project])->set('myBid', 175)->set('myRank', 60)->set('totalBids', 150)->call('markBidPlaced');
+
+        $project->refresh();
+        $this->assertSame(33, $project->bid_count_observed);
+        $this->assertSame(150, $project->bid_count_at_bid);
+    }
+
+    public function test_no_observed_count_without_a_recorded_snapshot(): void
+    {
+        $project = $this->makeProject([], ['bid_count' => 7], $this->scoringReply());
+
+        Livewire::test(ProjectShow::class, ['project' => $project])->set('myBid', 100)->call('markBidPlaced')->assertHasNoErrors();
+
+        $this->assertNull($project->fresh()->bid_count_observed);
+        $this->assertNull($project->fresh()->bid_count_observed_at);
     }
 
     public function test_rank_and_total_are_optional_but_validated(): void

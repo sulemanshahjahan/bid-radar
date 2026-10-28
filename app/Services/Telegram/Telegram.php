@@ -48,6 +48,7 @@ class Telegram
             return false;
         }
         $project->forceFill(['alerted_at' => now()])->save();
+        $project->recordDecision(['alert' => ['sent_at' => now()->toIso8601String(), 'silent' => $silent, 'quiet' => $quiet, 'without_draft' => $note !== null]]);
 
         $draft = $project->latestDraft()->first();
         if ($draft !== null && ! $capReached && $note === null) {

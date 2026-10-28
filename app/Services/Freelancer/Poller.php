@@ -3,6 +3,7 @@
 namespace App\Services\Freelancer;
 
 use App\Jobs\ScoreProject;
+use App\Models\ApiCall;
 use App\Models\Project;
 use App\Services\BidTracker;
 use App\Services\Settings;
@@ -125,6 +126,7 @@ class Poller
 
         if (! $dryRun) {
             Cache::forever(self::LAST_SUCCESS, now()->getTimestamp());
+            $this->recordPollCounts($data, count($report), $known->count());
             $this->refreshTrackedBids($seenIds);
         }
 
@@ -133,6 +135,30 @@ class Poller
             'message' => sprintf('%d new, %d sent to scoring%s.', count($report), $dryRun ? 0 : $queued, $dryRun ? ' (dry run, nothing saved)' : ''),
             'projects' => $report,
         ];
+    }
+
+    /**
+     * Counts for this poll on its api_calls row. "page_full" (returned = limit) is the truncation
+     * signal: total_count is stored as reported but is not a reliable total.
+     *
+     * @param  array{projects: list<array<string, mixed>>, total_count?: int|null, call_id?: int|null}  $data
+     */
+    private function recordPollCounts(array $data, int $new, int $known): void
+    {
+        if (empty($data['call_id'])) {
+            return;
+        }
+
+        $limit = (int) config('bidradar.freelancer.page_limit');
+        $returned = count($data['projects']);
+        ApiCall::query()->whereKey($data['call_id'])->update(['meta' => json_encode([
+            'returned' => $returned,
+            'total_count' => $data['total_count'] ?? null,
+            'new' => $new,
+            'known' => $known,
+            'limit' => $limit,
+            'page_full' => $limit > 0 && $returned >= $limit,
+        ])]);
     }
 
     /** @param array<string, mixed> $raw */

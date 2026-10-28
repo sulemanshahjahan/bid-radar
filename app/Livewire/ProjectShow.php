@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Jobs\DraftProject;
+use App\Models\BidSnapshot;
 use App\Models\Draft;
 use App\Models\Project;
 use App\Models\WinningExample;
@@ -151,6 +152,13 @@ class ProjectShow extends Component
         ]);
 
         $project = $this->project();
+
+        // The last count BidRadar saw before the first "Bid placed", with when it saw it. Set once:
+        // updating the outcome later never changes it. Not the exact count at submission.
+        if ($project->bid_count_observed === null && ($snap = BidSnapshot::query()->where('project_id', $project->id)->latest('recorded_at')->latest('id')->first())) {
+            $project->forceFill(['bid_count_observed' => $snap->bid_count, 'bid_count_observed_at' => $snap->recorded_at]);
+        }
+
         $project->update([
             'status' => 'bid_placed',
             'my_bid_amount' => $this->myBid,

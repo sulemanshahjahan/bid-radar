@@ -24,6 +24,9 @@ class FreelancerClient
 
     private const TOKEN_PAUSE_MINUTES = 60;
 
+    /** api_calls row of the last successful request (the Poller adds per-poll counts to it). */
+    private ?int $lastCallId = null;
+
     public function __construct(
         private readonly CostTracker $log,
         private readonly FailureAlerts $alerts,
@@ -32,8 +35,11 @@ class FreelancerClient
     /**
      * Active projects with full description, skills, upgrades and inline owner details.
      *
+     * total_count is passed through as Freelancer reports it; the probe on 2026-10-28 showed it is not a
+     * reliable total of all matches (0 on an offset page while 6 matched), so it is never used to page.
+     *
      * @param  list<int>  $jobIds
-     * @return array{projects: list<array<string, mixed>>, users: array<string, array<string, mixed>>}
+     * @return array{projects: list<array<string, mixed>>, users: array<string, array<string, mixed>>, total_count: int|null, call_id: int|null}
      */
     public function activeProjects(array $jobIds, ?int $fromTime = null): array
     {
@@ -60,6 +66,8 @@ class FreelancerClient
         return [
             'projects' => array_values($result['projects'] ?? []),
             'users' => is_array($users) ? $users : [],
+            'total_count' => is_numeric($result['total_count'] ?? null) ? (int) $result['total_count'] : null,
+            'call_id' => $this->lastCallId,
         ];
     }
 
@@ -181,7 +189,7 @@ class FreelancerClient
             throw new FreelancerException('Freelancer API error '.$response->status().': '.self::errorText($response), $response->status());
         }
 
-        $this->log->logApi('freelancer', $purpose, true, $response->status(), $ms);
+        $this->lastCallId = $this->log->logApi('freelancer', $purpose, true, $response->status(), $ms)->id;
         Cache::forget(self::BACKOFF_LEVEL);
 
         // Respect the published rate limit: if this window is used up, pause until it resets.

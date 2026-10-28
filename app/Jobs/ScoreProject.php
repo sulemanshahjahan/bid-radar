@@ -61,13 +61,16 @@ class ScoreProject implements ShouldQueue
         $high = $adjusted['score'] >= $settings->int('threshold_high');
         $medium = $adjusted['score'] >= $settings->int('threshold_medium');
         $live = $project->source === 'freelancer';
+        $paused = (bool) $settings->get('paused');
 
         // Filtered projects (rules, new build with too many bids, low score) are never drafted
         // or alerted automatically, pasted or live. The owner can still draft anyway.
         $project = $project->fresh();
-        if ($gate->blockers($project) !== []) {
+        if ($blockers = $gate->blockers($project)) {
             // High fit held back only by unverified payment: still alert me (without a draft) so I can decide.
-            if ($live && $high && $gate->onlyPaymentBlocks($project) && ! $settings->get('paused')) {
+            $paymentAlert = $live && $high && $gate->onlyPaymentBlocks($project) && ! $paused;
+            $this->recordDecision($project, $result, $adjusted, $settings, $paymentAlert ? 'alert_without_draft' : 'blocked', $blockers);
+            if ($paymentAlert) {
                 $telegram->projectAlert($project, note: 'Not drafted: '.RulesFilter::paymentWarning($project->details ?? []).'. Open to draft anyway.');
             }
 
@@ -77,8 +80,13 @@ class ScoreProject implements ShouldQueue
         // High fit: alert FIRST (seconds count), then draft; the draft follows as silent messages.
         // Paste mode can ask to always draft (no alerts for pasted projects).
         if ($project->auto_draft || $high) {
-            $alerting = $live && $high && ! $settings->get('paused');
+            $alerting = $live && $high && ! $paused;
             $capReached = $costs->capReached();
+            $this->recordDecision($project, $result, $adjusted, $settings, match (true) {
+                $alerting && $capReached => 'alert_cap_reached',
+                $alerting => 'alert_and_draft',
+                default => 'draft_only',
+            });
             if ($alerting) {
                 $telegram->projectAlert($project, capReached: $capReached, draftComing: ! $capReached);
             }
@@ -88,8 +96,58 @@ class ScoreProject implements ShouldQueue
         }
 
         // Medium fit: listed in the feed; optional quiet alert.
-        if ($live && $medium && $settings->get('quiet_alerts') && ! $settings->get('paused')) {
+        $quiet = $live && $medium && $settings->get('quiet_alerts') && ! $paused;
+        $this->recordDecision($project, $result, $adjusted, $settings, match (true) {
+            $quiet => 'quiet_alert',
+            $medium => 'feed',
+            default => 'hidden',
+        });
+        if ($quiet) {
             $telegram->projectAlert($project->fresh(), quiet: true);
         }
+    }
+
+    /**
+     * BidRadar's own decision for later analysis (projects.decision, kept after the purge). Only scores,
+     * rule labels and codes: no brief text, and raw bid counts or budgets are stripped from the labels.
+     *
+     * @param  array<string, mixed>  $result  normalized scoring reply
+     * @param  array{base: int, adjustments: list<array{label: string, points: int}>, score: int}  $adjusted
+     * @param  list<string>  $blockers
+     */
+    private function recordDecision(Project $project, array $result, array $adjusted, Settings $settings, string $decision, array $blockers = []): void
+    {
+        $project->recordDecision([
+            'decided_at' => now()->toIso8601String(),
+            'scoring_model' => $settings->get('scoring_model'),
+            'rank_rebuild' => (bool) $settings->get('rank_rebuild'),
+            'base_score' => $adjusted['base'],
+            'score' => $adjusted['score'],
+            'adjustments' => array_map(fn ($a) => ['label' => self::ruleLabel($a['label']), 'points' => $a['points']], $adjusted['adjustments']),
+            'category' => $result['category'] ?? null,
+            'estimated_hours' => $result['estimated_hours'] ?? null,
+            'quick_fix' => $result['quick_fix'] ?? null,
+            'large_vague_or_off_niche' => $result['large_vague_or_off_niche'] ?? null,
+            'threshold_high' => $settings->int('threshold_high'),
+            'threshold_medium' => $settings->int('threshold_medium'),
+            'decision' => $decision,
+            'blockers' => array_values(array_unique(array_map(self::blockerCode(...), $blockers))),
+        ]);
+    }
+
+    /** "123 bids (31+)" -> "bids (31+)", "budget top under minimum ($12)" -> "budget top under minimum". */
+    public static function ruleLabel(string $label): string
+    {
+        return trim((string) preg_replace(['/^\d+\s+bids\b/', '/\s*\(\$[\d.,]+\)/'], ['bids', ''], $label));
+    }
+
+    public static function blockerCode(string $blocker): string
+    {
+        return match (true) {
+            str_contains($blocker, 'payment') => 'payment',
+            str_starts_with($blocker, 'new build') => 'new_build_bid_limit',
+            str_starts_with($blocker, 'score ') => 'below_medium',
+            default => 'rules_filter',
+        };
     }
 }

@@ -15,6 +15,7 @@ use Illuminate\Support\Carbon;
     'my_bid_amount', 'my_bid_currency', 'bid_count_at_bid', 'avg_bid_at_bid',
     'bid_placed_at', 'posted_at', 'purged_at', 'filter_reason', 'alerted_at',
     'my_bid_rank', 'viewed', 'chat_started', 'won_at', 'scored_at', 'drafted_at',
+    'bid_count_observed', 'bid_count_observed_at', 'decision',
 ])]
 class Project extends Model
 {
@@ -50,7 +51,17 @@ class Project extends Model
             'chat_started' => 'boolean',
             'my_bid_rank' => 'integer',
             'bid_count_at_bid' => 'integer',
+            'bid_count_observed' => 'integer',
+            'bid_count_observed_at' => 'datetime',
+            // BidRadar's own score and alert decision (ScoreProject, Telegram). No Freelancer text; kept after the purge.
+            'decision' => 'array',
         ];
+    }
+
+    /** Merge keys into the decision record. */
+    public function recordDecision(array $values): void
+    {
+        $this->forceFill(['decision' => array_merge($this->decision ?? [], $values)])->save();
     }
 
     public function drafts(): HasMany
