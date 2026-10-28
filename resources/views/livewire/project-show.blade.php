@@ -266,7 +266,7 @@
             <div class="grid grid-cols-3 gap-2">
                 <label class="block"><span class="label text-xs">My bid</span><input type="number" step="any" inputmode="decimal" wire:model="myBid" class="field" placeholder="171"></label>
                 <label class="block"><span class="label text-xs">My rank</span><input type="number" inputmode="numeric" min="1" wire:model="myRank" class="field" placeholder="e.g. 12"></label>
-                <label class="block"><span class="label text-xs">Total bids</span><input type="number" inputmode="numeric" min="0" wire:model="totalBids" class="field" placeholder="e.g. 40"></label>
+                <label class="block"><span class="label text-xs">Total bids now</span><input type="number" inputmode="numeric" min="0" wire:model="totalBids" class="field" placeholder="e.g. 40"></label>
             </div>
             <button type="submit" class="btn-primary w-full">Bid placed</button>
         </form>
@@ -290,7 +290,10 @@
         </div>
         @if ($project->bid_placed_at)
             <p class="text-xs text-slate-500">
-                Bid {{ $project->my_bid_currency }} {{ (float) $project->my_bid_amount }} placed {{ $project->bid_placed_at->diffForHumans() }}@if ($project->my_bid_rank), ranked {{ $project->my_bid_rank }}@endif @if ($project->bid_count_at_bid !== null) of {{ $project->bid_count_at_bid }} bids @endif.
+                Bid {{ $project->my_bid_currency }} {{ (float) $project->my_bid_amount }} placed {{ $project->bid_placed_at->diffForHumans() }}@if ($project->my_bid_rank), ranked {{ $project->my_bid_rank }}@endif @if ($project->bid_count_at_bid !== null) of {{ $project->bid_count_at_bid }} bids (when recorded)@endif.
+                @if ($project->bid_count_observed !== null && $project->bid_count_observed_at)
+                    BidRadar last saw {{ $project->bid_count_observed }} bids {{ \App\Models\Project::duration((int) $project->bid_count_observed_at->diffInSeconds($project->bid_placed_at, true)) }} before you marked it.
+                @endif
             </p>
         @endif
     </div>

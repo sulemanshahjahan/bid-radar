@@ -64,9 +64,9 @@ class CostTracker
     }
 
     /** Log a non-Claude call (Freelancer, Telegram). No tokens or secrets are ever stored. */
-    public function logApi(string $provider, string $purpose, bool $ok, ?int $httpStatus, int $durationMs, ?string $error = null): void
+    public function logApi(string $provider, string $purpose, bool $ok, ?int $httpStatus, int $durationMs, ?string $error = null): ApiCall
     {
-        ApiCall::query()->create([
+        $call = ApiCall::query()->create([
             'provider' => $provider,
             'purpose' => $purpose,
             'status' => $ok ? 'ok' : 'error',
@@ -77,6 +77,8 @@ class CostTracker
 
         $context = compact('provider', 'purpose', 'httpStatus', 'durationMs', 'error');
         $ok ? Log::info($provider.' call', $context) : Log::warning($provider.' call failed', $context);
+
+        return $call;
     }
 
     public function logError(string $provider, string $purpose, ?int $projectId, ?string $model, ?int $httpStatus, string $error, int $durationMs): void

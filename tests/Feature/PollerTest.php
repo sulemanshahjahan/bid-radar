@@ -221,5 +221,30 @@ class PollerTest extends TestCase
         $this->assertCount(7, $result['projects']);
         $this->assertSame(0, Project::query()->count());
         Queue::assertNothingPushed();
+        $this->assertNull(ApiCall::query()->where('purpose', 'poll')->value('meta'), 'No per-poll counts on a dry run');
+    }
+
+    public function test_each_poll_records_returned_new_known_and_page_full_counts(): void
+    {
+        $this->fakeApi();
+
+        app(Poller::class)->poll(scheduled: false);
+        $first = ApiCall::query()->where('purpose', 'poll')->latest('id')->first()->meta;
+        $this->assertSame(['returned' => 7, 'total_count' => 7, 'new' => 7, 'known' => 0, 'limit' => 50, 'page_full' => false], $first);
+
+        app(Poller::class)->poll(scheduled: false);
+        $second = ApiCall::query()->where('purpose', 'poll')->latest('id')->first()->meta;
+        $this->assertSame(0, $second['new']);
+        $this->assertSame(7, $second['known']);
+    }
+
+    public function test_a_full_page_is_flagged_as_possible_truncation(): void
+    {
+        config(['bidradar.freelancer.page_limit' => 7]);
+        $this->fakeApi();
+
+        app(Poller::class)->poll(scheduled: false);
+
+        $this->assertTrue(ApiCall::query()->where('purpose', 'poll')->latest('id')->first()->meta['page_full']);
     }
 }
