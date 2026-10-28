@@ -18,7 +18,10 @@ final class Capabilities
     public const TAGS = [
         'elementor' => ['Elementor', true, ['elementor']],
         'divi' => ['Divi', true, ['divi']],
-        'css' => ['CSS', true, ['css3?', 'scss', 'sass', 'styling', 'stylesheet']],
+        'css' => ['CSS', true, ['css3?', 'scss', 'sass', 'styling', 'stylesheet',
+            // The problem described instead of named: an editor/live styling mismatch is CSS work.
+            'styles? (conflict|issue|problem|broken|not applying)', 'looks? different (on|in) the live', 'displays? (differently|wrongly|incorrectly)',
+            '(editor|preview)\b.{0,40}\b(live|front[- ]?end|published)']],
         // Layout words appear in most page work (Shopify, page builders): general, not proof of CSS work.
         'responsive' => ['Responsive layout', false, ['responsive', 'layout', 'spacing', 'alignment', 'overlaps?', 'overlapping', 'breakpoints?', 'mobile view', 'front[- ]?end']],
         'html' => ['HTML5 / HTML', true, ['html5?', 'markup', '(psd|figma|xd|design) to html', 'design to code']],
@@ -53,6 +56,41 @@ final class Capabilities
         'speed' => ['performance', 'caching'],
         'wordpress' => ['wordpress', 'plugin', 'maintenance'],
     ];
+
+    /**
+     * What the brief must say before a skill ranking counts for an area. Generic words ("HTML", "performance",
+     * "plugin", "security", "payment") appear in most briefs and skill lists and prove nothing about the
+     * specialist need; the specific requirement or the problem described does. Areas not listed here use
+     * their TAGS patterns, which are already specific (Elementor, Divi, WooCommerce, CSS...).
+     */
+    public const RANKING_EVIDENCE = [
+        'html' => ['html5', 'html ?\/ ?css', 'html and css', 'html emails?', 'html templates?', '(psd|figma|xd|design|mockup)s? (to|into) html', 'markup', 'responsive html', 'design to code'],
+        'performance' => ['page ?speed', 'site speed', 'speed up', 'speed optimi[sz]ation', '(site|website|page|pages) (is |are )?(very )?slow', 'slow (site|website|page|pages|loading|load)', 'core web vitals', 'lighthouse', 'gtmetrix', 'load(ing)? times?'],
+        'plugin' => ['custom plugin', 'plugin (development|conflict|bug|error|issue|customi[sz]ation|compatibility)', '(build|develop|create|write) (a |an )?(custom )?(wordpress )?plugin'],
+        'security' => ['malware', 'hacked', 'virus', 'spam injection', 'blacklisted', 'firewall', 'wordfence', 'vulnerabilit\w*', 'security (audit|hardening|scan|fix|issue|breach)'],
+        'payment' => ['payment gateways?', 'checkout', 'stripe', 'paypal', 'razorpay', 'authorize\.net', 'shopping cart', 'cart page', 'payments? (integration|issue|error|fail\w*|not working)'],
+        'blog' => ['blog design', 'blog (layout|template|theme)'],
+        'testing' => ['website testing', 'cross[- ]browser', 'quality assurance'],
+    ];
+
+    /**
+     * Specialist areas the brief establishes with enough context for a skill ranking to count
+     * (RANKING_EVIDENCE where defined, otherwise the area's own patterns).
+     *
+     * @return list<string>
+     */
+    public static function rankingTags(string $brief): array
+    {
+        $found = [];
+        foreach (self::TAGS as $tag => [, $specialist, $patterns]) {
+            $patterns = self::RANKING_EVIDENCE[$tag] ?? $patterns;
+            if ($specialist && preg_match('/(?<![\p{L}\p{N}])(?:'.implode('|', $patterns).')(?![\p{L}\p{N}])/iu', $brief)) {
+                $found[] = $tag;
+            }
+        }
+
+        return $found;
+    }
 
     /** Scoring categories that say the same thing as a tag (fact-bank past projects carry a category). */
     public const CATEGORY_TAGS = [
