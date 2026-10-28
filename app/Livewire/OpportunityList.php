@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Services\Opportunity\Opportunity;
 use App\Services\Opportunity\ShadowRanking;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
@@ -17,9 +18,32 @@ class OpportunityList extends Component
 {
     public const SORTS = ['recommended' => 'Recommended', 'opportunity' => 'Opportunity score', 'existing' => 'Existing score'];
 
-    /** recommended: class A, then B, then C, highest Opportunity score first within each class. */
+    /** recommended: actionable first within each class (recommendedGroup), then highest Opportunity score. */
     #[Url]
     public string $sort = 'recommended';
+
+    /**
+     * Recommended order groups: 0 A actionable, 1 A with a budget warning (cannot happen while A needs 75% of the
+     * target; kept in A, shown after actionable A, never reclassified), 2 B actionable, 3 B "Review only if scope or
+     * price changes", 4 B "Skip at current budget", 5 C (score order), 6 not evaluated. Nothing is hidden.
+     */
+    public static function recommendedGroup(?Opportunity $o): int
+    {
+        if ($o === null) {
+            return 6;
+        }
+        $action = $o->action();
+
+        return match ($o->class) {
+            'A' => in_array($action, [Opportunity::SKIP, Opportunity::RECONSIDER], true) ? 1 : 0,
+            'B' => match ($action) {
+                Opportunity::SKIP => 4,
+                Opportunity::RECONSIDER => 3,
+                default => 2,
+            },
+            default => 5,
+        };
+    }
 
     #[Url]
     public string $at = ShadowRanking::NOW;
@@ -45,8 +69,8 @@ class OpportunityList extends Component
             ->sortBy(fn ($r) => match ($this->sort) {
                 'existing' => $existingRanks[$r['project']->id],
                 'opportunity' => $newRanks[$r['project']->id],
-                // Unevaluated rows last; within a class the Opportunity ranking (score, then newer first).
-                default => ($r['opportunity'] ? ord($r['opportunity']->class) - ord('A') : 3) * 10000 + $newRanks[$r['project']->id],
+                // Within a group the Opportunity ranking (score, then newer first).
+                default => self::recommendedGroup($r['opportunity']) * 10000 + $newRanks[$r['project']->id],
             })
             ->take(60)
             ->values();
