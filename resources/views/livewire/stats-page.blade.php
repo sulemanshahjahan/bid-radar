@@ -29,7 +29,7 @@
         <p class="mt-2 text-xs text-slate-500">"You bid" is when you tapped Bid placed in BidRadar, so it includes the time to bid on Freelancer.</p>
     </section>
 
-    @foreach (['By category' => $byCategory, 'By bids on the project when I bid' => $byBucket, 'By opening of the draft (from prompt v2)' => $byHook] as $title => $rows)
+    @foreach (['By category' => $byCategory, 'By bids on the project' => $byBucket, 'By opening of the draft (from prompt v2)' => $byHook] as $title => $rows)
         <section class="card">
             <h2 class="font-semibold">{{ $title }}</h2>
             @if (collect($rows)->sum('bids') === 0)
@@ -53,6 +53,12 @@
                         </tbody>
                     </table>
                 </div>
+                @if ($rows === $byBucket)
+                    <p class="mt-2 text-xs text-slate-500">
+                        Counts: {{ $bucketSources['observed'] }} observed by BidRadar (last count seen before you marked the bid{{ $bucketSources['median_lag'] !== null ? ', median '.\App\Models\Project::duration($bucketSources['median_lag']).' earlier' : '' }}),
+                        {{ $bucketSources['typed'] }} typed by you when recording the outcome, {{ $bucketSources['none'] }} with neither (unknown). Observed counts are not the exact count at submission.
+                    </p>
+                @endif
             @endif
         </section>
     @endforeach
@@ -65,7 +71,7 @@
                 <span class="shrink-0 text-xs text-slate-500">
                     {{ config('bidradar.categories.'.$p->category, 'Other') }}
                     @if ($p->my_bid_amount) · {{ $p->my_bid_currency }} {{ (float) $p->my_bid_amount }} @endif
-                    @if ($p->bid_count_at_bid !== null) · {{ $p->bid_count_at_bid }} bids @endif
+                    @if ($p->bid_count_observed !== null) · {{ $p->bid_count_observed }} bids seen by BidRadar @elseif ($p->bid_count_at_bid !== null) · {{ $p->bid_count_at_bid }} bids (typed) @endif
                     · {{ $p->won_at->format('M j') }}
                 </span>
             </a>

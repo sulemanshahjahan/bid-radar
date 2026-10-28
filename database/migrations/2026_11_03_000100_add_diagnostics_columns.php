@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Schema;
  *   and when it saw it (not the exact count at submission). Kept like bid_count_at_bid.
  * - projects.decision: BidRadar's own score, adjustments and alert decision. Not wiped by the purge.
  * - api_calls.meta: per-poll counts (returned, new, known, page full).
- * - daily_stats: daily counts only.
+ * - daily_stats: counts only, per UTC hour.
  */
 return new class extends Migration
 {
@@ -26,15 +26,17 @@ return new class extends Migration
             $table->json('meta')->nullable()->after('error');
         });
 
+        // Counted per UTC hour (bidradar:daily-stats); a day is the sum of its hours.
         Schema::create('daily_stats', function (Blueprint $table) {
             $table->id();
             $table->date('date');
+            $table->unsignedTinyInteger('hour');
             $table->string('metric');
             $table->string('key');
             $table->unsignedInteger('value');
             $table->timestamps();
 
-            $table->unique(['date', 'metric', 'key']);
+            $table->unique(['date', 'hour', 'metric', 'key']);
         });
     }
 

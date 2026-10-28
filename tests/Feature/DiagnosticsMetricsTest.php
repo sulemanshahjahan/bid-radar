@@ -61,15 +61,30 @@ class DiagnosticsMetricsTest extends TestCase
         $this->assertSame('budget top under minimum', ScoreProject::ruleLabel('budget top under minimum ($12)'));
     }
 
-    public function test_blocked_and_low_projects_record_their_codes(): void
+    public function test_client_payment_status_is_never_retained_in_the_decision(): void
     {
-        $unverified = $this->makeProject(['source' => 'freelancer'], ['client' => ['payment_verified' => false]]);
+        // Low score + unverified payment: held, only the score blocker is kept.
+        $low = $this->makeProject(['source' => 'freelancer'], ['client' => ['payment_verified' => false]]);
         $this->claude->reply($this->scoringReply(['fit_score' => 40]));
-        ScoreProject::dispatchSync($unverified->id);
+        ScoreProject::dispatchSync($low->id);
 
-        $d = $unverified->fresh()->decision;
-        $this->assertSame('blocked', $d['decision']);
-        $this->assertEqualsCanonicalizing(['payment', 'below_medium'], $d['blockers']);
+        $d = $low->fresh()->decision;
+        $this->assertSame('held', $d['decision']);
+        $this->assertSame(['below_medium'], $d['blockers']);
+
+        // High fit held back only by payment: alerted, but nothing says why it was not drafted.
+        $high = $this->makeProject(['source' => 'freelancer'], ['client' => ['payment_verified' => false]]);
+        $this->claude->reply($this->scoringReply(['fit_score' => 90]));
+        ScoreProject::dispatchSync($high->id);
+
+        $d = $high->fresh()->decision;
+        $this->assertSame('held', $d['decision']);
+        $this->assertSame([], $d['blockers']);
+        $this->assertSame(['sent_at', 'silent', 'quiet'], array_keys($d['alert']));
+        foreach ([$low, $high] as $p) {
+            $this->assertStringNotContainsStringIgnoringCase('payment', json_encode($p->fresh()->decision));
+            $this->assertStringNotContainsStringIgnoringCase('verified', json_encode($p->fresh()->decision));
+        }
     }
 
     public function test_quiet_alert_decision_is_recorded(): void
@@ -98,68 +113,120 @@ class DiagnosticsMetricsTest extends TestCase
         $this->assertSame('alert_and_draft', $project->decision['decision']);
     }
 
-    // --- Daily stats -------------------------------------------------------------------
+    // --- Hourly counts (bidradar:daily-stats) -----------------------------------------
 
-    private function dayProject(array $overrides, array $details = []): Project
+    /** A live project created in the hour 2026-10-27 14:00 UTC (counted from 10-28 10:00, safe until 13:55). */
+    private function hourProject(array $overrides, array $details = [], string $at = '2026-10-27 14:10:00'): Project
     {
         $p = $this->makeProject(array_merge(['source' => 'freelancer', 'title' => 'Secret client title', 'description' => 'Secret brief text'], $overrides), $details);
-        $p->forceFill(['created_at' => Carbon::parse('2026-10-27 10:00:00')])->save();
+        $p->forceFill(['created_at' => Carbon::parse($at)])->save();
 
         return $p;
     }
 
-    public function test_daily_stats_count_filters_bands_skills_alerts_and_crowding(): void
+    /** @return int|null value summed over the hours of 2026-10-27 */
+    private function day(string $metric, string $key): ?int
     {
-        $this->dayProject(['ai_state' => 'filtered', 'filter_reason' => 'Too many bids (180)'], ['skills' => ['SEO']]);
-        $this->dayProject(['ai_state' => 'filtered', 'filter_reason' => 'Excluded keyword: backlinks'], ['skills' => ['SEO']]);
-        $high = $this->dayProject(['fit_score' => 80, 'ai_state' => 'scored', 'posted_at' => Carbon::parse('2026-10-27 09:59:00'),
-            'alerted_at' => Carbon::parse('2026-10-27 10:00:20'), 'decision' => ['decision' => 'alert_and_draft', 'alert' => ['silent' => false]]],
-            ['skills' => ['WordPress', 'PHP'], 'bid_count' => 150]);
-        BidSnapshot::query()->create(['project_id' => $high->id, 'bid_count' => 2, 'recorded_at' => Carbon::parse('2026-10-27 09:59:30')]);
-        BidSnapshot::query()->create(['project_id' => $high->id, 'bid_count' => 64, 'recorded_at' => Carbon::parse('2026-10-27 10:00:30')]);
-        $this->dayProject(['fit_score' => 20, 'ai_state' => 'scored'], ['skills' => ['PHP'], 'bid_count' => 12]);
-        $this->makeProject(['source' => 'freelancer', 'ai_state' => 'filtered', 'filter_reason' => 'No budget']); // today: not counted
-        ApiCall::query()->create(['provider' => 'freelancer', 'purpose' => 'poll', 'status' => 'ok', 'meta' => ['page_full' => true]])
-            ->forceFill(['created_at' => Carbon::parse('2026-10-27 08:00:00')])->save();
+        $rows = DailyStat::query()->whereDate('date', '2026-10-27')->where('metric', $metric)->where('key', $key);
 
-        $this->artisan('bidradar:daily-stats')->assertSuccessful(); // default: yesterday (2026-10-27)
-
-        $v = fn ($metric, $key) => DailyStat::query()->where('metric', $metric)->where('key', $key)->value('value');
-        $this->assertSame(4, $v('discovered', 'total'));
-        $this->assertSame(1, $v('filter', 'Too many bids'));
-        $this->assertSame(1, $v('filter', 'Excluded keyword: backlinks'));
-        $this->assertSame(2, $v('filter', 'passed'));
-        $this->assertSame(2, $v('skill', 'PHP'));
-        $this->assertSame(1, $v('skill_medium_plus', 'WordPress'));
-        $this->assertSame(1, $v('band', 'high'));
-        $this->assertSame(1, $v('band', 'low'));
-        $this->assertSame(1, $v('alert', 'loud'));
-        $this->assertSame(1, $v('decision', 'alert_and_draft'));
-        $this->assertSame(1, $v('latest_bids', 'alerted:100+'));
-        $this->assertSame(1, $v('bids_2min_vs_latest', '30+|latest100+'));
-        $this->assertSame(1, $v('polls', 'page_full'));
-        $this->assertNull($v('filter', 'No budget'));
+        return $rows->exists() ? (int) $rows->sum('value') : null;
     }
 
-    public function test_daily_stats_hold_no_project_text_and_rerunning_replaces(): void
+    public function test_an_hour_is_counted_with_filters_bands_skills_alerts_and_crowding(): void
     {
-        $this->dayProject(['fit_score' => 80, 'ai_state' => 'scored']);
+        $this->hourProject(['ai_state' => 'filtered', 'filter_reason' => 'Too many bids (180)'], ['skills' => ['SEO']]);
+        $this->hourProject(['ai_state' => 'filtered', 'filter_reason' => 'Excluded keyword: backlinks'], ['skills' => ['SEO']]);
+        $high = $this->hourProject(['fit_score' => 80, 'ai_state' => 'scored', 'posted_at' => Carbon::parse('2026-10-27 14:09:00'),
+            'alerted_at' => Carbon::parse('2026-10-27 14:10:20'), 'decision' => ['decision' => 'alert_and_draft', 'alert' => ['silent' => false]]],
+            ['skills' => ['WordPress', 'PHP'], 'bid_count' => 150]);
+        BidSnapshot::query()->create(['project_id' => $high->id, 'bid_count' => 2, 'recorded_at' => Carbon::parse('2026-10-27 14:09:30')]);
+        BidSnapshot::query()->create(['project_id' => $high->id, 'bid_count' => 64, 'recorded_at' => Carbon::parse('2026-10-27 14:10:30')]);
+        $this->hourProject(['fit_score' => 20, 'ai_state' => 'scored'], ['skills' => ['PHP'], 'bid_count' => 12]);
+        $this->hourProject(['ai_state' => 'filtered', 'filter_reason' => 'No budget'], [], '2026-10-27 17:10:00'); // not due until 10-28 13:00
+        ApiCall::query()->create(['provider' => 'freelancer', 'purpose' => 'poll', 'status' => 'ok', 'meta' => ['page_full' => true]])
+            ->forceFill(['created_at' => Carbon::parse('2026-10-27 14:20:00')])->save();
 
-        $this->artisan('bidradar:daily-stats', ['--date' => '2026-10-27'])->assertSuccessful();
-        $first = DailyStat::query()->count();
-        $this->artisan('bidradar:daily-stats', ['--date' => '2026-10-27'])->assertSuccessful();
+        $this->artisan('bidradar:daily-stats')->assertSuccessful();
 
-        $this->assertSame($first, DailyStat::query()->count(), 'Re-running the same day replaces its counts');
+        $this->assertSame(4, $this->day('discovered', 'total'));
+        $this->assertSame(1, $this->day('filter', 'Too many bids'));
+        $this->assertSame(1, $this->day('filter', 'Excluded keyword: backlinks'));
+        $this->assertSame(2, $this->day('filter', 'passed'));
+        $this->assertSame(2, $this->day('skill', 'PHP'));
+        $this->assertSame(1, $this->day('skill_medium_plus', 'WordPress'));
+        $this->assertSame(1, $this->day('band', 'high'));
+        $this->assertSame(1, $this->day('band', 'low'));
+        $this->assertSame(1, $this->day('alert', 'loud'));
+        $this->assertSame(1, $this->day('decision', 'alert_and_draft'));
+        $this->assertSame(1, $this->day('latest_bids', 'alerted:100+'));
+        $this->assertSame(1, $this->day('bids_2min_vs_latest', '30+|latest100+'));
+        $this->assertSame(1, $this->day('polls', 'page_full'));
+        $this->assertNull($this->day('filter', 'No budget'), 'Its hour is not due yet');
+    }
+
+    public function test_reruns_never_double_count_and_a_recount_replaces_the_hour(): void
+    {
+        $this->hourProject(['fit_score' => 80, 'ai_state' => 'scored']);
+
+        $this->artisan('bidradar:daily-stats')->assertSuccessful();
+        $rows = DailyStat::query()->count();
+        $this->artisan('bidradar:daily-stats')->expectsOutputToContain('Counted 0 hour(s)')->assertSuccessful();
+        $this->artisan('bidradar:daily-stats', ['--hour' => '2026-10-27 14'])->assertSuccessful();
+
+        $this->assertSame($rows, DailyStat::query()->count());
+        $this->assertSame(1, $this->day('discovered', 'total'));
+    }
+
+    public function test_a_delayed_run_still_counts_an_hour_before_the_purge_reaches_it(): void
+    {
+        $this->hourProject(['fit_score' => 20, 'ai_state' => 'scored']); // low score: the purge deletes it once 24h old
+        Carbon::setTestNow(Carbon::parse('2026-10-28 13:50:00')); // runs at 10:30-12:30 all missed
+
+        $this->artisan('bidradar:purge')->assertSuccessful();
+        $this->artisan('bidradar:daily-stats')->assertSuccessful();
+
+        $this->assertSame(1, $this->day('discovered', 'total'));
+    }
+
+    public function test_an_hour_the_purge_has_reached_is_flagged_missed_not_counted_partially(): void
+    {
+        DailyStat::query()->create(['date' => '2026-10-27', 'hour' => 9, 'metric' => 'meta', 'key' => 'counted_at', 'value' => 1]); // job already running
+        $this->hourProject(['fit_score' => 20, 'ai_state' => 'scored']);
+        Carbon::setTestNow(Carbon::parse('2026-10-28 14:30:00')); // every run for 14:00 was missed
+
+        $this->artisan('bidradar:purge')->assertSuccessful();
+        $this->artisan('bidradar:daily-stats')->assertSuccessful();
+
+        $this->assertNull($this->day('discovered', 'total'));
+        $this->assertSame(1, (int) DailyStat::query()->whereDate('date', '2026-10-27')->where('hour', 14)->where('key', 'missed')->value('value'));
+        $this->artisan('bidradar:daily-stats', ['--hour' => '2026-10-27 14'])->assertFailed();
+    }
+
+    public function test_hours_before_the_first_run_are_not_flagged_missed(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-28 14:30:00'));
+
+        $this->artisan('bidradar:daily-stats')->assertSuccessful();
+
+        $this->assertFalse(DailyStat::query()->where('key', 'missed')->exists());
+    }
+
+    public function test_hourly_counts_hold_no_project_text(): void
+    {
+        $this->hourProject(['fit_score' => 80, 'ai_state' => 'scored']);
+
+        $this->artisan('bidradar:daily-stats')->assertSuccessful();
+
         $dump = json_encode(DailyStat::query()->get(['metric', 'key', 'value'])->toArray());
         $this->assertStringNotContainsString('Secret', $dump);
         $this->assertSame('Budget too low', DailyStats::reason('Budget too low ($12 USD)'));
     }
 
-    public function test_daily_stats_are_scheduled_after_midnight_for_the_previous_day(): void
+    public function test_hourly_counts_are_scheduled_at_half_past_away_from_the_purge(): void
     {
         $event = collect(app(Schedule::class)->events())->first(fn ($e) => str_contains($e->command, 'bidradar:daily-stats'));
 
         $this->assertNotNull($event);
-        $this->assertSame('5 0 * * *', $event->expression);
+        $this->assertSame('30 * * * *', $event->expression);
     }
 }

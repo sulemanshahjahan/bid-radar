@@ -14,29 +14,87 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Daily counts that outlive the 24-hour purge. Counts only: no project IDs, titles, text or budgets.
+ * Counts that outlive the 24-hour purge, stored per UTC hour (a day is the sum of its hours).
+ * Counts only: no project IDs, titles, text or budgets.
  *
- * Runs at 00:05 UTC for the previous day: the hourly purge only removes rows created more than
- * 24 hours ago, so every project from that day is still there. Bid counts are as last seen at run time.
+ * Why per hour: the hourly purge deletes rows once they are 24 hours old, so a whole calendar day is
+ * never both finished and intact. An hour H is intact until H+24h. Each hour is counted once, on the
+ * first run at least COUNT_AFTER_HOURS after it started (bid counts are then close to final), and no
+ * later than SAFE_MINUTES. Hourly runs give four chances. A recount replaces the hour (no double
+ * counting). An hour that passes SAFE_MINUTES uncounted gets meta/missed = 1 instead of disappearing.
  */
-#[Signature('bidradar:daily-stats {--date= : Day to count (Y-m-d, UTC); default yesterday}')]
-#[Description('Store daily discovery, filter, score, alert and crowding counts')]
+#[Signature('bidradar:daily-stats {--hour= : Recount one closed hour, "Y-m-d H" (UTC), while its data is intact}')]
+#[Description('Store hourly counts of discovery, filters, scores, alerts and crowding (counts only)')]
 class DailyStats extends Command
 {
-    /** "Crowded" for the crowding counts, and the early-bids cut-off measured 2 minutes after posting. */
+    public const COUNT_AFTER_HOURS = 20;
+
+    /** Last safe moment after the hour starts: the purge at H+24:00 starts deleting it. */
+    public const SAFE_MINUTES = 24 * 60 - 5;
+
+    /** How far back to look for hours that were never counted. */
+    private const LOOKBACK_HOURS = 7 * 24;
+
     private const CROWDED = 100;
 
     private const EARLY_BIDS = 30;
 
     public function handle(Settings $settings): int
     {
-        $day = $this->option('date') ? Carbon::parse($this->option('date'), 'UTC')->startOfDay() : now('UTC')->subDay()->startOfDay();
+        $now = now('UTC');
+
+        if ($this->option('hour')) {
+            $hour = Carbon::createFromFormat('Y-m-d H', (string) $this->option('hour'), 'UTC')->startOfHour();
+            if ($now->lt($hour->copy()->addHour()) || $now->gte($hour->copy()->addMinutes(self::SAFE_MINUTES))) {
+                $this->error("Hour {$hour->format('Y-m-d H:00')} is still open or its data may already be purged; not recounted (existing counts kept).");
+
+                return self::FAILURE;
+            }
+            $this->countHour($hour, $settings);
+
+            return self::SUCCESS;
+        }
+
+        // Hours from before this job first ran are not "missed": only flag from the first hour it recorded.
+        $first = DailyStat::query()->where('metric', 'meta')->orderBy('date')->orderBy('hour')->first();
+        $trackedFrom = $first ? Carbon::parse($first->date->toDateString(), 'UTC')->setHour($first->hour) : null;
+        $counted = $missed = 0;
+        for ($h = $now->copy()->startOfHour()->subHours(self::LOOKBACK_HOURS); $h->lte($now->copy()->subHours(self::COUNT_AFTER_HOURS)); $h->addHour()) {
+            if ($this->hasMeta($h)) {
+                continue;
+            }
+            if ($now->gte($h->copy()->addMinutes(self::SAFE_MINUTES))) {
+                // Too late to count without losing rows: flag it so the gap is visible.
+                if ($trackedFrom !== null && $h->gte($trackedFrom)) {
+                    $this->store($h, ['meta' => ['missed' => 1]]);
+                    $missed++;
+                }
+
+                continue;
+            }
+            $this->countHour($h->copy(), $settings);
+            $counted++;
+        }
+
+        $this->info("Counted {$counted} hour(s), flagged {$missed} missed.");
+
+        return self::SUCCESS;
+    }
+
+    private function hasMeta(Carbon $hour): bool
+    {
+        return DailyStat::query()->whereDate('date', $hour->toDateString())->where('hour', $hour->hour)->where('metric', 'meta')->exists();
+    }
+
+    private function countHour(Carbon $hour, Settings $settings): void
+    {
+        $from = $hour->copy();
+        $to = $hour->copy()->addHour();
         $high = $settings->int('threshold_high');
         $medium = $settings->int('threshold_medium');
 
         $projects = Project::query()->where('source', 'freelancer')
-            ->where('created_at', '>=', $day)->where('created_at', '<', $day->copy()->addDay())
-            ->withCount('drafts')->get();
+            ->where('created_at', '>=', $from)->where('created_at', '<', $to)->withCount('drafts')->get();
 
         $counts = [];
         $add = function (string $metric, string $key) use (&$counts) {
@@ -85,28 +143,38 @@ class DailyStats extends Command
             }
         }
 
-        $counts['my_bids']['placed'] = Project::query()->where('bid_placed_at', '>=', $day)->where('bid_placed_at', '<', $day->copy()->addDay())->count();
+        $counts['my_bids']['placed'] = Project::query()->where('bid_placed_at', '>=', $from)->where('bid_placed_at', '<', $to)->count();
 
         $polls = ApiCall::query()->where('provider', 'freelancer')->where('purpose', 'poll')
-            ->where('created_at', '>=', $day)->where('created_at', '<', $day->copy()->addDay())->get(['status', 'meta']);
+            ->where('created_at', '>=', $from)->where('created_at', '<', $to)->get(['status', 'meta']);
         $counts['polls'] = [
             'ok' => $polls->where('status', 'ok')->count(),
             'error' => $polls->where('status', '!=', 'ok')->count(),
             'page_full' => $polls->filter(fn (ApiCall $c) => ($c->meta['page_full'] ?? false) === true)->count(),
         ];
+        $counts['meta'] = ['counted_at' => now()->getTimestamp(), 'projects' => $projects->count()];
 
-        DB::transaction(function () use ($day, $counts) {
-            DailyStat::query()->whereDate('date', $day->toDateString())->delete();
+        $this->store($hour, $counts);
+    }
+
+    /**
+     * Replace everything stored for this hour in one transaction.
+     *
+     * @param  array<string, array<string, int>>  $counts
+     */
+    private function store(Carbon $hour, array $counts): void
+    {
+        DB::transaction(function () use ($hour, $counts) {
+            DailyStat::query()->whereDate('date', $hour->toDateString())->where('hour', $hour->hour)->delete();
             foreach ($counts as $metric => $keys) {
                 foreach ($keys as $key => $value) {
-                    DailyStat::query()->create(['date' => $day->toDateString(), 'metric' => $metric, 'key' => mb_substr((string) $key, 0, 255), 'value' => $value]);
+                    DailyStat::query()->create([
+                        'date' => $hour->toDateString(), 'hour' => $hour->hour,
+                        'metric' => $metric, 'key' => mb_substr((string) $key, 0, 255), 'value' => $value,
+                    ]);
                 }
             }
         });
-
-        $this->info(sprintf('Stored %d counts for %s (%d projects).', array_sum(array_map('count', $counts)), $day->toDateString(), $projects->count()));
-
-        return self::SUCCESS;
     }
 
     /** Filter reason without the numbers that come from the project ("Too many bids (123)" -> "Too many bids"). */
