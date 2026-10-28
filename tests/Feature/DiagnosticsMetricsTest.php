@@ -87,6 +87,26 @@ class DiagnosticsMetricsTest extends TestCase
         }
     }
 
+    public function test_rank_rebuild_client_adjustments_are_not_itemized_in_the_decision(): void
+    {
+        app(Settings::class)->set(['rank_rebuild' => true]);
+        $project = $this->makeProject(['source' => 'freelancer'], ['client' => ['payment_verified' => false, 'rating' => 4.9, 'projects' => 5]]);
+        $this->claude->reply($this->scoringReply(['fit_score' => 70, 'quick_fix' => true, 'large_vague_or_off_niche' => false]));
+
+        ScoreProject::dispatchSync($project->id);
+
+        $project->refresh();
+        $labels = array_column($project->scoring['adjustments'], 'label');
+        $this->assertContains('payment not verified', $labels, 'Scoring itself is unchanged (purged after 24h)');
+        $this->assertContains('client 4.8+ with 3+ projects', $labels);
+
+        $d = $project->decision;
+        $this->assertSame([['label' => 'quick fix (1-2 days)', 'points' => 10]], $d['adjustments']);
+        $this->assertSame($project->fit_score, $d['score'], 'Score still includes every adjustment');
+        $this->assertStringNotContainsStringIgnoringCase('payment', json_encode($d));
+        $this->assertStringNotContainsString('client 4.8', json_encode($d));
+    }
+
     public function test_a_failing_decision_write_never_blocks_the_alert_or_the_draft(): void
     {
         Project::saving(function (Project $p) {
