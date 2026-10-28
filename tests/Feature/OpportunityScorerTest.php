@@ -204,13 +204,21 @@ class OpportunityScorerTest extends TestCase
         $this->assertGreaterThanOrEqual(0.75, $f['value']);
     }
 
-    public function test_hourly_projects_compare_the_rate_with_the_target(): void
+    public function test_hourly_projects_use_estimated_net_not_the_advertised_maximum(): void
     {
-        $good = $this->evaluate($this->variant('S1', details: ['type' => 'hourly', 'budget_min' => 15, 'budget_max' => 30]))->factors['profit'];
+        // 25-45/h: lower quarter 30 x 0.9 = 27 net -> at target. 15-30/h: 18.75 x 0.9 = 16.9 net -> 67%, though "up to 30" is advertised.
+        $good = $this->evaluate($this->variant('S1', details: ['type' => 'hourly', 'budget_min' => 25, 'budget_max' => 45]))->factors['profit'];
+        $advertisedHigh = $this->evaluate($this->variant('S1', details: ['type' => 'hourly', 'budget_min' => 15, 'budget_max' => 30]));
         $low = $this->evaluate($this->variant('S1', details: ['type' => 'hourly', 'budget_min' => 5, 'budget_max' => 10]))->factors['profit'];
 
         $this->assertSame(0.9, $good['value']);
         $this->assertSame(0.3, $low['value']);
+        $e = $advertisedHigh->earnings();
+        $this->assertTrue($e['hourly']);
+        $this->assertSame(30.0, $e['advertised']);
+        $this->assertEqualsWithDelta(16.88, $e['net'], 0.01);
+        $this->assertSame('fair', $e['band']);
+        $this->assertStringContainsString('not guaranteed', implode(' ', $advertisedHigh->factors['profit']['risks']));
     }
 
     // --- Competition ----------------------------------------------------------------------
@@ -457,6 +465,88 @@ class OpportunityScorerTest extends TestCase
         $f = $this->evaluate($this->variant('S1', details: ['budget_min' => 50, 'budget_max' => 150], scoring: ['estimated_hours' => 3]))->factors['profit'];
         $this->assertSame(0.8, $f['value']);
         $this->assertStringContainsString('lower quarter', implode(' ', $f['good']));
+    }
+
+    // --- Class A earnings rule, ranking evidence, decision helpers (2026-10-28) ----------------
+
+    public function test_class_a_needs_net_earnings_of_75_percent_of_target(): void
+    {
+        // $25 target, 10% fee, 2h: a fixed $50 budget nets 22.5/h (90%) -> A; $36 nets 16.2/h (65%) -> not A.
+        $ok = $this->evaluate($this->variant('S1', details: ['budget_min' => 50, 'budget_max' => 50]));
+        $short = $this->evaluate($this->variant('S1', details: ['budget_min' => 36, 'budget_max' => 36]));
+
+        $this->assertSame('A', $ok->class);
+        $this->assertNotSame('A', $short->class);
+        $this->assertContains('Not a strong specialist opportunity: the budget is not known to fit the effort.', $short->rules);
+        $this->assertEqualsWithDelta(0.65, $short->earnings()['ratio'], 0.01);
+    }
+
+    public function test_a_generic_html_word_earns_no_ranking_credit_but_html5_work_does(): void
+    {
+        $profile = $this->profile(asOf: '2026-10-28', rankings: ['HTML5 | 6', 'HTML | 23']);
+        $generic = $this->evaluate($this->variant('R3', ['description' => 'Need help with the HTML on my website.'], ['skills' => ['HTML']]), $profile);
+        $specific = $this->evaluate($this->variant('R3', ['description' => 'Convert our Figma design to HTML5 and CSS3.'], ['skills' => ['HTML']]), $profile);
+
+        $this->assertStringNotContainsString('ranking', implode(' ', $generic->strengths));
+        $this->assertStringContainsString('HTML5 ranking: top 6%', implode(' ', $specific->strengths));
+    }
+
+    public function test_generic_performance_or_plugin_words_need_context_for_ranking_credit(): void
+    {
+        $this->assertSame([], array_intersect(['performance', 'plugin'], Capabilities::rankingTags('Website optimization and performance. Install a plugin.')));
+        $this->assertContains('performance', Capabilities::rankingTags('Our WordPress site is slow, PageSpeed score is 30.'));
+        $this->assertContains('plugin', Capabilities::rankingTags('Fix a plugin conflict after the update.'));
+    }
+
+    public function test_an_elementor_style_conflict_described_in_other_words_is_css_work(): void
+    {
+        $tags = Capabilities::tag('The page looks fine in the editor but the live site displays differently.');
+        $this->assertContains('css', $tags);
+        $this->assertContains('css', Capabilities::rankingTags('The page looks fine in the editor but the live site displays differently.'));
+    }
+
+    public function test_a_top_100_percent_ranking_earns_nothing_and_never_erases_documented_work(): void
+    {
+        $none = $this->evaluate('S1', $this->profile(asOf: '2026-10-28', rankings: []));
+        $weak = $this->evaluate('S1', $this->profile(asOf: '2026-10-28', rankings: ['Elementor | 100', 'CSS | 100']));
+
+        $this->assertSame($none->factors['experience']['value'], $weak->factors['experience']['value']);
+        $this->assertSame(ProfileEvidence::STRONG, $weak->experience);
+        $this->assertStringNotContainsString('ranking', implode(' ', $weak->strengths));
+    }
+
+    public function test_related_rankings_count_once(): void
+    {
+        $one = $this->evaluate('S3', $this->profile(asOf: '2026-10-28', rankings: ['CSS3 | 3']));
+        $many = $this->evaluate('S3', $this->profile(asOf: '2026-10-28', rankings: ['CSS3 | 3', 'HTML5 | 6', 'CSS | 13', 'LESS/Sass/SCSS | 6']));
+
+        $this->assertSame($one->factors['experience']['value'], $many->factors['experience']['value']);
+        $this->assertSame(1, substr_count(implode(' ', $many->strengths), 'ranking'));
+    }
+
+    public function test_earnings_bands_and_actions_follow_commercial_viability(): void
+    {
+        $at = fn (float $budget) => $this->evaluate($this->variant('S1', details: ['budget_min' => $budget, 'budget_max' => $budget], scoring: ['estimated_hours' => 4]));
+
+        // 4h at $25 target, 10% fee: 112 -> 25.2/h, 60 -> 13.5/h, 30 -> 6.75/h, 16 -> 3.6/h
+        $this->assertSame('good', $at(112)->earnings()['band']);
+        $this->assertSame('fair', $at(60)->earnings()['band']);
+        $this->assertSame(Opportunity::RECONSIDER, $at(30)->action());
+        $this->assertSame('poor', $at(30)->earnings()['band']);
+        $this->assertSame(Opportunity::SKIP, $at(16)->action());
+        $this->assertSame('unknown', $this->evaluate($this->variant('S1', scoring: ['estimated_hours' => null]))->earnings()['band']);
+        $this->assertSame('Review: confirm budget and effort first', $this->evaluate($this->variant('X2', scoring: ['estimated_hours' => null]))->action());
+    }
+
+    public function test_why_and_top_risk_are_one_line_summaries(): void
+    {
+        $o = $this->evaluate('X4'); // WhatsApp request, unverified payment
+        $this->assertStringStartsWith('Off-platform contact', (string) $o->topRisk());
+
+        $s1 = $this->evaluate('S1');
+        $this->assertStringStartsWith('Comparable past project: Elementor styling conflict', $s1->why());
+        $this->assertStringNotContainsString('shared:', $s1->why());
+        $this->assertSame('No comparable past project documented', $this->evaluate('P_D')->why());
     }
 
     #[DataProvider('classes')]

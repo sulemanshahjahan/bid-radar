@@ -86,7 +86,7 @@ class OpportunityScorer
         $rules = [];
 
         $technical = $this->technical($briefTags, $skillTags, $category, $in->scoring, $base);
-        $experience = $this->experience($briefTags, $skillTags, $category, $profile);
+        $experience = $this->experience($briefTags, $skillTags, Capabilities::rankingTags($in->text), $category, $profile);
         $weakFit = $technical['value'] < 0.55 || ($base !== null && $base < (int) config('bidradar.opportunity.weak_fit_below'));
         if ($weakFit && $experience['value'] > $technical['value'] + 0.2) {
             $experience['value'] = $technical['value'] + 0.2;
@@ -121,7 +121,9 @@ class OpportunityScorer
 
         $classA = (int) config('bidradar.opportunity.class_a');
         $specialistProof = in_array($experience['strength'], [ProfileEvidence::STRONG, ProfileEvidence::MODERATE], true);
-        $profitOk = ! $out['profit']['unknown'] && $out['profit']['value'] >= 0.55;
+        // A needs estimated net earnings of at least a_min_profit_ratio of the hourly target (lower-quarter budget).
+        $profitOk = ! $out['profit']['unknown'] && $out['profit']['ratio'] !== null
+            && $out['profit']['ratio'] >= (float) config('bidradar.opportunity.a_min_profit_ratio', 0.75);
         $competitionOk = $out['competition']['unknown'] || $out['competition']['value'] >= 0.4;
         $lowFit = $base !== null && $base < (int) config('bidradar.opportunity.low_fit_below');
         $class = match (true) {
@@ -217,8 +219,9 @@ class OpportunityScorer
     /**
      * @param  list<string>  $briefTags
      * @param  list<string>  $skillTags
+     * @param  list<string>  $rankTags  specialist areas the brief establishes well enough for a ranking to count
      */
-    private function experience(array $briefTags, array $skillTags, ?string $category, ProfileEvidence $profile): array
+    private function experience(array $briefTags, array $skillTags, array $rankTags, ?string $category, ProfileEvidence $profile): array
     {
         $f = self::factor() + ['strength' => ProfileEvidence::NONE, 'proof' => null, 'labels_only' => false];
         $match = $profile->comparableProject($briefTags, $category, $skillTags);
@@ -253,8 +256,13 @@ class OpportunityScorer
             $f['notes'][] = 'No comparable project in the fact bank (evidence unknown, not a lack of ability).';
         }
 
-        // Rankings only for areas the brief names; not weighted up until their date is verified.
-        $rank = $profile->bestRanking($briefTags);
+        // Rankings only for specialist areas the brief establishes with real context (Capabilities::rankingTags):
+        // one best ranking, never several related ones. A ranking outside the top half earns nothing (and never
+        // lowers documented work below having no ranking at all).
+        $rank = $profile->bestRanking($rankTags);
+        if ($rank !== null && $rank['top'] > 50) {
+            $rank = null;
+        }
         $rankValue = 0.1;
         if ($rank !== null) {
             $rankValue = match (true) {
@@ -331,7 +339,8 @@ class OpportunityScorer
     /** @param array<string, array{deduction: float, flag: string}> $concerns */
     private function profit(OpportunityInput $in, array $concerns): array
     {
-        $f = self::factor();
+        // net: estimated take-home per hour (USD), ratio: net / target, advertised: the client's top hourly rate.
+        $f = self::factor() + ['net' => null, 'ratio' => null, 'advertised' => null, 'basis' => null];
         $d = $in->details;
         $usd = (float) (($d['exchange_rate'] ?? 1) ?: 1);
         $min = (float) ($d['budget_min'] ?? 0) * $usd;
@@ -347,10 +356,15 @@ class OpportunityScorer
         }
 
         if (($d['type'] ?? 'fixed') === 'hourly') {
-            $top = max($min, $max);
-            $ratio = $top / $target;
+            // The advertised top rate is not take-home: estimate from the lower quarter of the range, after the fee.
+            $f['basis'] = 'hourly';
+            $f['advertised'] = round(max($min, $max), 2);
+            $f['net'] = round(self::realisticBudget($min, $max) * $keep, 2);
+            $f['ratio'] = round($f['net'] / $target, 3);
+            $ratio = $f['ratio'];
             $f['value'] = $ratio >= 1 ? 0.9 : ($ratio >= 0.75 ? 0.6 : 0.3);
-            $line = sprintf('Hourly up to USD %s against your USD %s target', self::num(round($top)), self::num($target));
+            $line = sprintf('Advertised up to USD %s/h; estimated net about USD %s/h after the fee (lower quarter of the range, not guaranteed); target USD %s/h',
+                self::num(round($f['advertised'])), self::num(round($f['net'])), self::num($target));
             if ($ratio >= 0.75) {
                 $f['good'][] = $line;
             } else {
@@ -369,6 +383,9 @@ class OpportunityScorer
         // The scoring model's hours already include testing, fixes and handover: no extra buffer.
         $effective = $budget * $keep / $hours;
         $ratio = $effective / $target;
+        $f['basis'] = 'fixed';
+        $f['net'] = round($effective, 2);
+        $f['ratio'] = round($ratio, 3);
         $f['value'] = match (true) {
             $ratio >= 1 => 1.0,
             $ratio >= 0.75 => 0.8,

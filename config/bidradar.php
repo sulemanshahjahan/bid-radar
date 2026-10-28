@@ -193,6 +193,8 @@ return [
         // every live project at scoring time), so 70 keeps the same bar. A's evidence gates are unchanged.
         'class_a' => 70,
         'class_b' => 55,
+        // Class A needs estimated net earnings of at least this share of the hourly target (owner decision 2026-10-28).
+        'a_min_profit_ratio' => 0.75,
         // The scoring model's base fit under this caps the class at C (B with strong comparable work in the brief).
         'low_fit_below' => 20,
         // Under this base fit (or a weak technical factor) experience credit is limited to technical + 0.2.

@@ -9,6 +9,7 @@ use App\Livewire\ProjectShow;
 use App\Livewire\SettingsPage;
 use App\Models\BidSnapshot;
 use App\Models\DailyStat;
+use App\Models\PastProject;
 use App\Models\Project;
 use App\Models\User;
 use App\Services\Backup\ScrubbedBackup;
@@ -121,6 +122,28 @@ class OpportunityShadowTest extends TestCase
             ->assertSee('was 55')
             ->set('sort', 'existing')
             ->assertSeeInOrder(['Big vague build', 'Specialist fix']);
+    }
+
+    public function test_recommended_puts_class_a_above_a_higher_scoring_b_and_shows_the_shortlist_count(): void
+    {
+        PastProject::query()->create(['category' => 'fix', 'problem' => 'Elementor styling conflict on the live site', 'what_i_did' => 'Fixed the CSS', 'result' => 'Positive feedback']);
+        // Good pay, new client: A. Better client, poor pay: higher score but B ("far below target").
+        $this->scored(['title' => 'Paid Elementor fix'], ['budget_min' => 60, 'budget_max' => 120, 'bid_count' => 40, 'client' => []],
+            ['fit_score' => 70, 'estimated_hours' => 2]);
+        $this->scored(['title' => 'Cheap Elementor fix'], ['budget_min' => 10, 'budget_max' => 12, 'client' => ['payment_verified' => true, 'rating' => 5.0, 'reviews' => 20, 'projects' => 25]],
+            ['fit_score' => 90, 'estimated_hours' => 3]);
+        $rows = collect(app(ShadowRanking::class)->rows())->keyBy(fn ($r) => $r['project']->title);
+        $this->assertSame('A', $rows['Paid Elementor fix']['opportunity']->class);
+        $this->assertSame('B', $rows['Cheap Elementor fix']['opportunity']->class);
+        $this->assertGreaterThan($rows['Paid Elementor fix']['opportunity']->score, $rows['Cheap Elementor fix']['opportunity']->score, 'precondition');
+
+        Livewire::test(OpportunityList::class)
+            ->assertSeeInOrder(['Paid Elementor fix', 'Cheap Elementor fix'])
+            ->assertSeeHtml('2 shortlisted')->assertSee('/ 2 evaluated')
+            ->assertSee('Budget far below target')->assertSee(Opportunity::SKIP)
+            ->assertSee('% of target')
+            ->set('sort', 'opportunity')
+            ->assertSeeInOrder(['Cheap Elementor fix', 'Paid Elementor fix']);
     }
 
     public function test_an_empty_shortlist_says_so_without_hiding_that_projects_exist(): void

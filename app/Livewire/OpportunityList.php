@@ -15,8 +15,11 @@ use Livewire\Component;
 #[Title('Opportunities (shadow)')]
 class OpportunityList extends Component
 {
+    public const SORTS = ['recommended' => 'Recommended', 'opportunity' => 'Opportunity score', 'existing' => 'Existing score'];
+
+    /** recommended: class A, then B, then C, highest Opportunity score first within each class. */
     #[Url]
-    public string $sort = 'opportunity';
+    public string $sort = 'recommended';
 
     #[Url]
     public string $at = ShadowRanking::NOW;
@@ -39,7 +42,12 @@ class OpportunityList extends Component
 
         $shown = $rows
             ->when($this->shortlist, fn ($c) => $c->filter(fn ($r) => in_array($r['opportunity']?->class, ['A', 'B'], true)))
-            ->sortBy(fn ($r) => $this->sort === 'existing' ? $existingRanks[$r['project']->id] : $newRanks[$r['project']->id])
+            ->sortBy(fn ($r) => match ($this->sort) {
+                'existing' => $existingRanks[$r['project']->id],
+                'opportunity' => $newRanks[$r['project']->id],
+                // Unevaluated rows last; within a class the Opportunity ranking (score, then newer first).
+                default => ($r['opportunity'] ? ord($r['opportunity']->class) - ord('A') : 3) * 10000 + $newRanks[$r['project']->id],
+            })
             ->take(60)
             ->values();
 

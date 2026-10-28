@@ -144,6 +144,15 @@
             <div class="mt-3 space-y-2 text-sm">
                 <p class="text-xs text-slate-500">Experimental. A priority for your attention, not a chance of winning. It changes nothing in alerts or drafting.</p>
                 <p><span class="font-medium">Suggested:</span> {{ $opportunity->action() }}</p>
+                @php($e = $opportunity->earnings())
+                <p>
+                    <span class="font-medium">Estimated earnings:</span>
+                    <span @class(['font-medium', 'text-emerald-700' => $e['band'] === 'good', 'text-amber-700' => $e['band'] === 'fair', 'text-red-700' => $e['band'] === 'poor', 'text-slate-500' => $e['band'] === 'unknown'])>
+                        {{ $e['net'] === null ? 'unknown' : '≈ $'.number_format($e['net'], 0).'/h net, '.(int) round($e['ratio'] * 100).'% of your target' }}
+                    </span>
+                    @if ($e['hourly'] && $e['advertised']) <span class="text-slate-500">(advertised up to ${{ number_format($e['advertised'], 0) }}/h; not guaranteed take-home)</span> @endif
+                    @if ($e['band'] === 'poor') <span class="font-semibold text-red-700">· Budget far below target</span> @endif
+                </p>
                 @if ($opportunity->rules)
                     <div><p class="font-medium text-violet-800">Rules applied</p>
                         <ul class="list-disc pl-5 text-slate-700">@foreach ($opportunity->rules as $line) <li>{{ $line }}</li> @endforeach</ul></div>
