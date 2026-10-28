@@ -19,6 +19,9 @@ final class ProfileEvidence
 
     public const MODERATE = 'moderate';
 
+    /** Specialist overlap that only Freelancer skill labels suggest: possible, not proven, not irrelevant. */
+    public const UNCERTAIN = 'uncertain';
+
     public const WEAK = 'weak';
 
     public const NONE = 'none';
@@ -104,7 +107,7 @@ final class ProfileEvidence
      * areas of one family are named in the brief, +1 for the same scoring category.
      *
      * Strong: 3+ points with a specialist area named in the brief. Moderate: a specialist area named in the
-     * brief. Weak: general overlap, or specialist overlap that rests on skill labels only (uncertain).
+     * brief. Uncertain: specialist overlap that rests on skill labels only. Weak: general overlap only.
      *
      * @param  list<string>  $briefTags  from the title and description
      * @param  list<string>  $skillTags  from the Freelancer skill labels
@@ -145,6 +148,7 @@ final class ProfileEvidence
             'strength' => match (true) {
                 $best['brief'] !== [] && $best['points'] >= 3 => self::STRONG,
                 $best['brief'] !== [] => self::MODERATE,
+                $best['labels_only'] => self::UNCERTAIN,
                 default => self::WEAK,
             },
             'labels_only' => $best['labels_only'],

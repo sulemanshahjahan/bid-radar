@@ -228,11 +228,12 @@ class OpportunityScorer
         $past = match ($f['strength']) {
             ProfileEvidence::STRONG => 1.0,
             ProfileEvidence::MODERATE => 0.6,
+            ProfileEvidence::UNCERTAIN => 0.45, // never proof for class A
             ProfileEvidence::WEAK => 0.25,
             default => 0.1,
         };
 
-        if ($match !== null && $f['strength'] !== ProfileEvidence::WEAK) {
+        if ($match !== null && ! in_array($f['strength'], [ProfileEvidence::WEAK, ProfileEvidence::UNCERTAIN], true)) {
             $f['good'][] = sprintf('%s past project: %s (shared: %s)%s',
                 $f['strength'] === ProfileEvidence::STRONG ? 'Comparable' : 'Related',
                 self::short($match['problem']), self::labels($match['shared']),

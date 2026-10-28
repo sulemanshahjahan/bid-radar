@@ -189,7 +189,9 @@ return [
     'opportunity' => [
         'enabled' => (bool) env('OPPORTUNITY_SHADOW', true),
         'weights' => ['technical' => 25, 'experience' => 25, 'client' => 15, 'profit' => 15, 'competition' => 15, 'clarity' => 5],
-        'class_a' => 75,
+        // A was 75 when early competition earned full marks; it is neutral now (about 7 points lower for nearly
+        // every live project at scoring time), so 70 keeps the same bar. A's evidence gates are unchanged.
+        'class_a' => 70,
         'class_b' => 55,
         // The scoring model's base fit under this caps the class at C (B with strong comparable work in the brief).
         'low_fit_below' => 20,
