@@ -43,6 +43,17 @@ final class Capabilities
         'php' => ['PHP', false, ['php']],
     ];
 
+    /**
+     * Related areas that describe the same kind of work. A comparison credits each family once, so
+     * "CSS + HTML + responsive" is one piece of front-end evidence, not three.
+     */
+    public const FAMILIES = [
+        'frontend' => ['css', 'html', 'responsive', 'templates', 'landing_page', 'blog', 'newsletter'],
+        'commerce' => ['woocommerce', 'payment', 'shopify', 'shopify_theme'],
+        'speed' => ['performance', 'caching'],
+        'wordpress' => ['wordpress', 'plugin', 'maintenance'],
+    ];
+
     /** Scoring categories that say the same thing as a tag (fact-bank past projects carry a category). */
     public const CATEGORY_TAGS = [
         'fix' => 'troubleshooting',
@@ -64,6 +75,18 @@ final class Capabilities
         }
 
         return $found;
+    }
+
+    /** The family a tag belongs to, or the tag itself when it stands alone (Elementor, Divi, security...). */
+    public static function family(string $tag): string
+    {
+        foreach (self::FAMILIES as $family => $tags) {
+            if (in_array($tag, $tags, true)) {
+                return $family;
+            }
+        }
+
+        return $tag;
     }
 
     public static function label(string $tag): string

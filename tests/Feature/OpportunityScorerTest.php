@@ -145,7 +145,7 @@ class OpportunityScorerTest extends TestCase
 
     public function test_technical_fit_by_kind_of_work(): void
     {
-        $this->assertSame(1.0, $this->evaluate('S1')->factors['technical']['value'], 'Elementor/CSS fix');
+        $this->assertGreaterThanOrEqual(0.9, $this->evaluate('S1')->factors['technical']['value'], 'Elementor/CSS fix');
         $this->assertGreaterThanOrEqual(0.75, $this->evaluate('S3')->factors['technical']['value'], 'Responsive HTML5');
         $this->assertGreaterThanOrEqual(0.75, $this->evaluate('X1')->factors['technical']['value'], 'Membership build is legitimate work');
         $this->assertGreaterThanOrEqual(0.75, $this->evaluate('X2')->factors['technical']['value'], 'Shopify customisation');
@@ -227,7 +227,8 @@ class OpportunityScorerTest extends TestCase
     {
         $f = $this->evaluate($this->variant('S1', ['bids' => 40, 'age_minutes' => 2]))->factors['competition'];
 
-        $this->assertSame(0.5, $f['value']);
+        $this->assertSame(0.35, $f['value']);
+        $this->assertFalse($f['unknown']);
         $this->assertStringContainsString('likely to get crowded', implode(' ', $f['risks']));
     }
 
@@ -347,9 +348,105 @@ class OpportunityScorerTest extends TestCase
         $crowded = $this->evaluate('X3');
         $this->assertGreaterThanOrEqual(75, $crowded->score);
         $this->assertSame('B', $crowded->class);
-        $this->assertContains('Not marked as a strong specialist opportunity: competition is already heavy.', $crowded->unknowns);
+        $this->assertContains('Not a strong specialist opportunity: competition is already heavy.', $crowded->rules);
 
         $this->assertNotSame('A', $this->evaluate('X5')->class, 'Keyword-stuffed vague brief');
+    }
+
+    // --- Regressions from the 28 Oct real-project evaluation ----------------------------------
+
+    public function test_off_niche_work_is_not_lifted_by_broad_words(): void
+    {
+        $o = $this->evaluate('R1');
+
+        $this->assertSame('C', $o->class);
+        $this->assertContains('Low technical fit: the scoring model rates it 8/100. Capped at C.', $o->rules);
+        $this->assertLessThan(0.3, $o->factors['experience']['value'], 'Broad speed/HTML words earn no strong match');
+    }
+
+    public function test_a_low_fit_project_with_a_comparable_specialist_brief_can_reach_b_but_not_a(): void
+    {
+        $o = $this->evaluate('R2');
+
+        $this->assertSame('B', $o->class);
+        $this->assertStringContainsString('Low-fit exception', implode(' ', $o->rules));
+        $this->assertContains('Experience credit limited: technical fit is weak, so past work counts for less.', $o->rules);
+    }
+
+    public function test_skill_labels_alone_make_an_uncertain_match_not_a_strong_one(): void
+    {
+        $o = $this->evaluate('R3');
+
+        $this->assertSame(ProfileEvidence::WEAK, $o->experience);
+        $this->assertNull($o->proof);
+        $this->assertContains('Specialist match rests on Freelancer skill labels only: treated as uncertain.', $o->rules);
+        $this->assertStringContainsString('skill labels', implode(' ', $o->factors['technical']['notes']));
+        $this->assertNotSame('A', $o->class);
+    }
+
+    public function test_the_same_brief_words_prove_a_specialist_match(): void
+    {
+        $labels = $this->evaluate('R3');
+        $brief = $this->evaluate($this->variant('R3', ['description' => 'Build a responsive HTML5 and CSS3 card section from our design.']));
+
+        $this->assertSame(ProfileEvidence::STRONG, $brief->experience);
+        $this->assertGreaterThan($labels->factors['experience']['value'], $brief->factors['experience']['value']);
+    }
+
+    public function test_related_frontend_words_count_as_one_family(): void
+    {
+        $one = $this->evaluate($this->variant('S3', ['description' => 'Build a responsive card section in CSS3.']));
+        $many = $this->evaluate($this->variant('S3', ['description' => 'Build a responsive card section in CSS3, HTML5, SCSS, markup, layout, front-end templates.']));
+
+        $this->assertSame($one->factors['experience']['value'], $many->factors['experience']['value']);
+    }
+
+    public function test_email_work_is_not_an_off_platform_warning_and_vague_flags_count_once(): void
+    {
+        $o = $this->evaluate('R4');
+        $concerns = OpportunityScorer::concerns($this->set['cases']['R4']['scoring']['red_flags']);
+
+        $this->assertSame([], $concerns['client']);
+        $this->assertSame(['vague requirements'], array_keys($concerns['clarity']));
+        $this->assertSame(0.75, $o->factors['clarity']['value'], 'Quick fix 0.9 minus one vague deduction');
+        $this->assertGreaterThanOrEqual(0.9, $o->factors['client']['value']);
+    }
+
+    public function test_genuine_off_platform_requests_still_count_and_independent_concerns_add_up_to_a_cap(): void
+    {
+        $c = OpportunityScorer::concerns(['Asks to move to WhatsApp', 'Wants your personal email address', 'Looks like a scam', 'Wants a free sample first']);
+        $this->assertSame(['off-platform contact', 'suspicious request', 'unpaid work'], array_keys($c['client']));
+
+        $o = $this->evaluate($this->variant('S1', scoring: ['red_flags' => ['Asks to move to WhatsApp', 'Looks like a scam', 'Wants a free sample first']]));
+        $this->assertSame(0.45, $o->factors['client']['value'], '0.95 minus the 0.5 cap');
+    }
+
+    public function test_new_verified_clients_are_neutral(): void
+    {
+        $o = $this->evaluate($this->variant('S1', details: ['client' => ['payment_verified' => true]]));
+
+        $this->assertSame(0.65, $o->factors['client']['value']);
+        $this->assertEmpty($o->factors['client']['risks']);
+    }
+
+    public function test_early_competition_is_neutral_not_full_marks(): void
+    {
+        $f = $this->evaluate('R5')->factors['competition'];
+
+        $this->assertSame(0.5, $f['value']);
+        $this->assertTrue($f['unknown']);
+        $this->assertStringContainsString('too early to judge', implode(' ', $f['notes']));
+    }
+
+    public function test_profit_uses_the_lower_quarter_of_the_budget_and_no_extra_buffer(): void
+    {
+        $this->assertSame(75.0, OpportunityScorer::realisticBudget(50, 150));
+        $this->assertSame(80.0, OpportunityScorer::realisticBudget(80, 0));
+
+        // 50-150 range -> 75; 75 x 0.9 / 3h = 22.5/h = 0.9 of 25 -> 0.8. The midpoint (100) would give 30/h -> 1.0.
+        $f = $this->evaluate($this->variant('S1', details: ['budget_min' => 50, 'budget_max' => 150], scoring: ['estimated_hours' => 3]))->factors['profit'];
+        $this->assertSame(0.8, $f['value']);
+        $this->assertStringContainsString('lower quarter', implode(' ', $f['good']));
     }
 
     #[DataProvider('classes')]

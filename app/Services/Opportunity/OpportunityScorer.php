@@ -14,19 +14,25 @@ use InvalidArgumentException;
  * It is NOT a win probability and does not change scoring, filters, drafting or alerts.
  *
  * Each piece of evidence counts under one factor only:
- * - technical:   can I do this kind of work? Capability areas found (once each, not per keyword),
- *                the scoring category, the scoring model's "large or off-niche" flag.
- * - experience:  can I prove it? The closest fact-bank past project, and owner-reported skill rankings
- *                (weighted down when undated or old). Profile-wide stats (rating, reviews) are the same
- *                for every project, so they cannot rank one above another and are not used.
- * - client:      payment status, rating and history, off-platform or suspicious red flags. Never country.
- * - profit:      budget against estimated hours (+ testing and revisions) at the hourly target after the fee.
- * - competition: bid count observed at that moment, project age, very fast early bidding. Capped so a
- *                crowded project is never written off. Differentiation is credited under experience only.
+ * - technical:   can I do this kind of work? The scoring model's base fit (its reading of the whole brief),
+ *                capability areas named in the brief (Freelancer skill labels only count as uncertain),
+ *                the scoring category and the "large or off-niche" flag.
+ * - experience:  can I prove it? The closest fact-bank past project (families of related work count once)
+ *                and owner-reported skill rankings for areas the brief names. Limited when technical fit is
+ *                weak. Profile-wide stats (rating, reviews) are the same for every project: not used.
+ * - client:      payment status, rating and history, client-side red flags (off-platform, suspicious,
+ *                unpaid work, instructions aimed at bidders). Never country; no history is neutral.
+ * - profit:      a conservative budget (lower quarter of the range) after the fee, over the estimated hours
+ *                (which already include testing and handover), against the hourly target.
+ * - competition: bid count observed at that moment and project age. Under ScoreAdjuster::FRESH_MINUTES it
+ *                is too early to judge: neutral, unless bids are already pouring in.
  * - clarity:     deliverables, outside dependencies, vague or unrealistic red flags. A short fix brief is normal.
  *
- * A factor with no information gets a neutral 0.5 and is listed as unknown, except experience: no
- * documented match scores low (labelled "not documented", never "cannot do it").
+ * Red flags are grouped by concern and each concern counts once, under one factor.
+ *
+ * Classes: A needs the A score, documented comparable work, a budget known to fit and competition not
+ * already heavy. A project the scoring model rates under low_fit_below is capped at C, or at B when the
+ * brief names a specialist area matching strong comparable work (the exception is listed in rules).
  */
 class OpportunityScorer
 {
@@ -45,12 +51,25 @@ class OpportunityScorer
         'maintenance' => 0.85, 'b2b_wholesale' => 0.7, 'new_build' => 0.7, 'other' => 0.5,
     ];
 
-    /** Red flags are routed to one factor each (first match), so one flag never costs twice. */
-    private const FLAG_ROUTES = [
-        'client' => '/off[- ]?platform|outside (of )?freelancer|whatsapp|telegram|skype|e-?mail|phone|contact (me|him|her|them)|scam|suspicious|fraud|free (work|sample|test)|unpaid|instructions? (aimed|to) (bidders|ai)/i',
-        'profit' => '/budget|underpric|low pay|cheap/i',
-        'clarity' => '/vague|unclear|undefined|unrealistic|deadline|timeline|scope/i',
+    /**
+     * Red-flag concerns, checked in order (first match wins): concern => [factor, deduction, pattern].
+     * "Email" alone is ordinary work (email templates, email marketing): only contact details or
+     * contact outside Freelancer count as off-platform.
+     */
+    private const CONCERNS = [
+        'off-platform contact' => ['client', 0.3, '/off[- ]?platform|outside (of )?freelancer|whatsapp|telegram|skype|personal (e-?mail|phone|contact)|(e-?mail|phone) (address|number)|contact (me|him|her|them|the client) (directly|on|via|at|outside)|direct contact/i'],
+        'suspicious request' => ['client', 0.3, '/scam|fraud|suspicious|fake|phishing|illegal/i'],
+        'unpaid work' => ['client', 0.2, '/free (work|sample|test|trial)|unpaid|without pay|spec work/i'],
+        'instructions aimed at bidders' => ['client', 0.15, '/instructions? (aimed|to|for) (bidders|ai)|ignore (previous|all)|prompt injection/i'],
+        'budget' => ['profit', 0.0, '/budget|underpric|low pay|cheap|price/i'],
+        'vague requirements' => ['clarity', 0.15, '/vague|unclear|undefined|ambiguous|lacks? (detail|specific)|missing (detail|information)|not specified|few details/i'],
+        'unrealistic expectations' => ['clarity', 0.15, '/unrealistic|(tight|short|aggressive) (deadline|timeline|timeframe|turnaround)/i'],
+        'large scope' => ['clarity', 0.15, '/scope|large|complex|extensive|many (features|pages|requirements)/i'],
     ];
+
+    private const CLIENT_FLAG_CAP = 0.5;
+
+    private const CLARITY_FLAG_CAP = 0.3;
 
     private const FIX_LIKE = ['fix', 'security', 'speed', 'checkout_payment'];
 
@@ -59,18 +78,31 @@ class OpportunityScorer
     public function evaluate(OpportunityInput $in, ProfileEvidence $profile): Opportunity
     {
         $weights = self::weights();
-        $tags = Capabilities::tag($in->text);
+        $briefTags = Capabilities::tag($in->text);
+        $skillTags = Capabilities::tag(implode(' | ', $in->skills()));
         $category = is_string($in->scoring['category'] ?? null) ? $in->scoring['category'] : null;
-        $flags = $this->routeFlags((array) ($in->scoring['red_flags'] ?? []));
+        $base = is_numeric($in->scoring['fit_score'] ?? null) ? (int) $in->scoring['fit_score'] : null;
+        $concerns = $this->concerns((array) ($in->scoring['red_flags'] ?? []));
+        $rules = [];
 
-        $experience = $this->experience($tags, $category, $profile);
+        $technical = $this->technical($briefTags, $skillTags, $category, $in->scoring, $base);
+        $experience = $this->experience($briefTags, $skillTags, $category, $profile);
+        $weakFit = $technical['value'] < 0.55 || ($base !== null && $base < (int) config('bidradar.opportunity.weak_fit_below'));
+        if ($weakFit && $experience['value'] > $technical['value'] + 0.2) {
+            $experience['value'] = $technical['value'] + 0.2;
+            $rules[] = 'Experience credit limited: technical fit is weak, so past work counts for less.';
+        }
+        if ($experience['labels_only']) {
+            $rules[] = 'Specialist match rests on Freelancer skill labels only: treated as uncertain.';
+        }
+
         $factors = [
-            'technical' => $this->technical($tags, $category, $in->scoring),
+            'technical' => $technical,
             'experience' => $experience,
-            'client' => $this->client((array) ($in->details['client'] ?? []), $flags['client']),
-            'profit' => $this->profit($in, $flags['profit']),
+            'client' => $this->client((array) ($in->details['client'] ?? []), $concerns['client']),
+            'profit' => $this->profit($in, $concerns['profit']),
             'competition' => $this->competition($in),
-            'clarity' => $this->clarity($in->scoring, $category, $flags['clarity']),
+            'clarity' => $this->clarity($in->scoring, $category, $concerns['clarity']),
         ];
 
         $out = [];
@@ -87,23 +119,32 @@ class OpportunityScorer
         }
         $score = max(0, min(100, array_sum(array_column($out, 'points'))));
 
+        $classA = (int) config('bidradar.opportunity.class_a');
         $specialistProof = in_array($experience['strength'], [ProfileEvidence::STRONG, ProfileEvidence::MODERATE], true);
-        // A strong specialist opportunity also needs a budget known to fit and competition that is not already heavy.
         $profitOk = ! $out['profit']['unknown'] && $out['profit']['value'] >= 0.55;
         $competitionOk = $out['competition']['unknown'] || $out['competition']['value'] >= 0.4;
+        $lowFit = $base !== null && $base < (int) config('bidradar.opportunity.low_fit_below');
         $class = match (true) {
-            $score >= (int) config('bidradar.opportunity.class_a') && $specialistProof && $profitOk && $competitionOk => 'A',
+            $score >= $classA && $specialistProof && $profitOk && $competitionOk && ! $lowFit => 'A',
             $score >= (int) config('bidradar.opportunity.class_b') => 'B',
             default => 'C',
         };
-
-        $unknowns = array_merge(...array_values(array_map(fn ($f) => $f['notes'], $out)));
-        if ($score >= (int) config('bidradar.opportunity.class_a') && $class !== 'A') {
-            $unknowns[] = 'Not marked as a strong specialist opportunity: '.match (true) {
+        if ($score >= $classA && $class !== 'A' && ! $lowFit) {
+            $rules[] = 'Not a strong specialist opportunity: '.match (true) {
                 ! $specialistProof => 'no comparable past project is documented.',
-                ! $profitOk => 'the budget for the effort is unknown or weak.',
+                ! $profitOk => 'the budget is not known to fit the effort.',
                 default => 'competition is already heavy.',
             };
+        }
+        if ($lowFit) {
+            $exception = $experience['strength'] === ProfileEvidence::STRONG;
+            $cap = $exception ? 'B' : 'C';
+            if ($class < $cap) {
+                $class = $cap;
+            }
+            $rules[] = $exception
+                ? "Low-fit exception: the scoring model rates it {$base}/100, but the brief names work that matches a comparable past project. Capped at B."
+                : "Low technical fit: the scoring model rates it {$base}/100. Capped at C.";
         }
 
         return new Opportunity(
@@ -112,10 +153,11 @@ class OpportunityScorer
             factors: $out,
             strengths: array_merge(...array_values(array_map(fn ($f) => $f['good'], $out))),
             risks: array_merge(...array_values(array_map(fn ($f) => $f['risks'], $out))),
-            unknowns: $unknowns,
+            unknowns: array_merge(...array_values(array_map(fn ($f) => $f['notes'], $out))),
             proof: $experience['proof'],
             experience: $experience['strength'],
-            tags: $tags,
+            tags: array_values(array_unique([...$briefTags, ...$skillTags])),
+            rules: $rules,
         );
     }
 
@@ -131,26 +173,38 @@ class OpportunityScorer
     }
 
     /**
-     * @param  list<string>  $tags
+     * @param  list<string>  $briefTags
+     * @param  list<string>  $skillTags
      * @param  array<string, mixed>  $scoring
      */
-    private function technical(array $tags, ?string $category, array $scoring): array
+    private function technical(array $briefTags, array $skillTags, ?string $category, array $scoring, ?int $base): array
     {
         $f = self::factor();
-        $specialist = Capabilities::specialist($tags);
-        $domain = $specialist !== [] ? 1.0 : ($tags !== [] ? 0.65 : 0.2);
+        $briefSpecialist = Capabilities::specialist($briefTags);
+        $labelSpecialist = array_values(array_diff(Capabilities::specialist($skillTags), $briefSpecialist));
+        $domain = match (true) {
+            $briefSpecialist !== [] => 1.0,
+            $labelSpecialist !== [] => 0.75, // uncertain: only the skill labels say so
+            $briefTags !== [] || $skillTags !== [] => 0.6,
+            default => 0.2,
+        };
         $task = $category === null ? 0.6 : (self::TASK_FIT[$category] ?? 0.5);
-        $f['value'] = 0.6 * $domain + 0.4 * $task;
+        $f['value'] = $base === null ? 0.6 * $domain + 0.4 * $task : 0.5 * $base / 100 + 0.3 * $domain + 0.2 * $task;
 
-        if ($specialist !== []) {
-            $f['good'][] = 'Specialist area: '.self::labels($specialist);
-        } elseif ($tags !== []) {
-            $f['good'][] = 'General fit: '.self::labels($tags);
-        } else {
+        if ($briefSpecialist !== []) {
+            $f['good'][] = 'Specialist area named in the brief: '.self::labels($briefSpecialist);
+        } elseif ($labelSpecialist !== []) {
+            $f['notes'][] = 'Only Freelancer skill labels suggest '.self::labels($labelSpecialist).'; the brief does not confirm it.';
+        } elseif ($briefTags === [] && $skillTags === []) {
             $f['risks'][] = 'No match with your capability areas';
         }
+        if ($base !== null && $base >= 70) {
+            $f['good'][] = "Scoring model fit {$base}/100";
+        } elseif ($base !== null && $base < 40) {
+            $f['risks'][] = "Scoring model fit only {$base}/100";
+        }
         if (($scoring['large_vague_or_off_niche'] ?? null) === true) {
-            $f['value'] *= 0.75;
+            $f['value'] *= 0.85;
             $f['risks'][] = 'Scoring flagged it as large or outside your services';
         }
         if ($category === null) {
@@ -160,32 +214,37 @@ class OpportunityScorer
         return $f;
     }
 
-    /** @param list<string> $tags */
-    private function experience(array $tags, ?string $category, ProfileEvidence $profile): array
+    /**
+     * @param  list<string>  $briefTags
+     * @param  list<string>  $skillTags
+     */
+    private function experience(array $briefTags, array $skillTags, ?string $category, ProfileEvidence $profile): array
     {
-        $f = self::factor() + ['strength' => ProfileEvidence::NONE, 'proof' => null];
-        $match = $profile->comparableProject($tags, $category);
+        $f = self::factor() + ['strength' => ProfileEvidence::NONE, 'proof' => null, 'labels_only' => false];
+        $match = $profile->comparableProject($briefTags, $category, $skillTags);
         $f['strength'] = $match['strength'] ?? ProfileEvidence::NONE;
+        $f['labels_only'] = $match['labels_only'] ?? false;
+        // Documented comparable work outweighs rankings (0.75 vs 0.25).
         $past = match ($f['strength']) {
             ProfileEvidence::STRONG => 1.0,
-            ProfileEvidence::MODERATE => 0.65,
-            ProfileEvidence::WEAK => 0.3,
-            default => 0.15,
+            ProfileEvidence::MODERATE => 0.6,
+            ProfileEvidence::WEAK => 0.25,
+            default => 0.1,
         };
 
         if ($match !== null && $f['strength'] !== ProfileEvidence::WEAK) {
-            $what = sprintf('%s past project: %s (shared: %s)%s',
+            $f['good'][] = sprintf('%s past project: %s (shared: %s)%s',
                 $f['strength'] === ProfileEvidence::STRONG ? 'Comparable' : 'Related',
                 self::short($match['problem']), self::labels($match['shared']),
                 $match['feedback'] ? ', with client feedback noted in your fact bank' : '');
-            $f['good'][] = $what;
             $f['proof'] = trim(self::short($match['problem'], 160).($match['result'] !== '' ? ' → '.self::short($match['result'], 160) : ''));
             if ($match['repeat']) {
                 $past = min(1.0, $past + 0.1);
                 $f['good'][] = 'Repeat-client trust documented for that work';
             }
         } elseif ($match !== null) {
-            $f['notes'][] = 'Only general overlap with documented work ('.self::labels($match['shared']).').';
+            $f['notes'][] = ($match['labels_only'] ? 'Possible but unconfirmed overlap with documented work (skill labels only: ' : 'Only general overlap with documented work (')
+                .self::labels($match['shared']).').';
         } elseif ($profile->pastProjectCount() === 0) {
             $f['unknown'] = true;
             $f['notes'][] = 'The fact bank has no past projects to compare with.';
@@ -193,8 +252,9 @@ class OpportunityScorer
             $f['notes'][] = 'No comparable project in the fact bank (evidence unknown, not a lack of ability).';
         }
 
-        $rank = $profile->bestRanking($tags);
-        $rankValue = 0.15;
+        // Rankings only for areas the brief names; not weighted up until their date is verified.
+        $rank = $profile->bestRanking($briefTags);
+        $rankValue = 0.1;
         if ($rank !== null) {
             $rankValue = match (true) {
                 $rank['top'] <= 5 => 1.0,
@@ -217,16 +277,16 @@ class OpportunityScorer
             }
         }
 
-        $f['value'] = 0.65 * $past + 0.35 * $rankValue;
+        $f['value'] = 0.75 * $past + 0.25 * $rankValue;
 
         return $f;
     }
 
     /**
      * @param  array<string, mixed>  $client
-     * @param  list<string>  $flags
+     * @param  array<string, array{deduction: float, flag: string}>  $concerns
      */
-    private function client(array $client, array $flags): array
+    private function client(array $client, array $concerns): array
     {
         $f = self::factor();
         $verified = $client['payment_verified'] ?? null;
@@ -238,7 +298,7 @@ class OpportunityScorer
             $value += 0.15;
             $f['good'][] = 'Payment verified';
         } elseif ($verified === false) {
-            $value = 0.2;
+            $value = 0.3;
             $f['risks'][] = 'Client payment not verified';
         }
 
@@ -253,12 +313,13 @@ class OpportunityScorer
             $f['notes'][] = 'Client history: none or not shown (new clients are not penalised).';
         }
 
-        foreach ($flags as $flag) {
-            $value -= 0.25;
-            $f['risks'][] = 'Red flag: '.self::short($flag);
+        // Independent serious concerns each count, once, up to a cap.
+        $value -= min(self::CLIENT_FLAG_CAP, array_sum(array_column($concerns, 'deduction')));
+        foreach ($concerns as $concern => $c) {
+            $f['risks'][] = ucfirst($concern).': '.self::short($c['flag']);
         }
 
-        if ($verified === null && $rating === null && $history === 0 && $flags === []) {
+        if ($verified === null && $rating === null && $history === 0 && $concerns === []) {
             $f['unknown'] = true;
         }
         $f['value'] = $value;
@@ -266,8 +327,8 @@ class OpportunityScorer
         return $f;
     }
 
-    /** @param list<string> $flags */
-    private function profit(OpportunityInput $in, array $flags): array
+    /** @param array<string, array{deduction: float, flag: string}> $concerns */
+    private function profit(OpportunityInput $in, array $concerns): array
     {
         $f = self::factor();
         $d = $in->details;
@@ -276,12 +337,12 @@ class OpportunityScorer
         $max = (float) ($d['budget_max'] ?? 0) * $usd;
         $target = $this->settings->float('hourly_rate_usd');
         $keep = 1 - max(0, min(50, $this->settings->float('platform_fee_percent'))) / 100;
-        foreach ($flags as $flag) {
-            $f['risks'][] = 'Red flag: '.self::short($flag);
+        foreach ($concerns as $c) {
+            $f['risks'][] = 'Red flag: '.self::short($c['flag']);
         }
 
         if ($target <= 0 || ($min <= 0 && $max <= 0)) {
-            return self::unknown($f, 'Budget unknown: profitability not estimated.', $flags);
+            return self::unknown($f, 'Budget unknown: profitability not estimated.', $concerns !== []);
         }
 
         if (($d['type'] ?? 'fixed') === 'hourly') {
@@ -300,13 +361,12 @@ class OpportunityScorer
 
         $hours = is_numeric($in->scoring['estimated_hours'] ?? null) && (int) $in->scoring['estimated_hours'] > 0 ? (int) $in->scoring['estimated_hours'] : null;
         if ($hours === null) {
-            return self::unknown($f, 'Effort not estimated: profitability unknown.', $flags);
+            return self::unknown($f, 'Effort not estimated: profitability unknown.', $concerns !== []);
         }
 
-        // The middle of the range, not the top: the top is the most a client might pay, not what they will.
-        $budget = $min > 0 && $max > 0 ? ($min + $max) / 2 : max($min, $max);
-        $buffer = (float) config('bidradar.delivery.buffer', 1.25);
-        $effective = $budget * $keep / ($hours * $buffer);
+        $budget = self::realisticBudget($min, $max);
+        // The scoring model's hours already include testing, fixes and handover: no extra buffer.
+        $effective = $budget * $keep / $hours;
         $ratio = $effective / $target;
         $f['value'] = match (true) {
             $ratio >= 1 => 1.0,
@@ -315,8 +375,8 @@ class OpportunityScorer
             $ratio >= 0.25 => 0.3,
             default => 0.1,
         };
-        $line = sprintf('Mid budget USD %s ≈ USD %s/h after the %s%% fee for ~%dh (+%d%% for testing and revisions); target USD %s/h',
-            self::num(round($budget)), self::num(round($effective)), self::num(round((1 - $keep) * 100, 1)), $hours, (int) round(($buffer - 1) * 100), self::num($target));
+        $line = sprintf('Conservative budget USD %s (lower quarter of the range) ≈ USD %s/h after the %s%% fee for ~%dh; target USD %s/h',
+            self::num(round($budget)), self::num(round($effective)), self::num(round((1 - $keep) * 100, 1)), $hours, self::num($target));
         if ($ratio >= 0.75) {
             $f['good'][] = $line;
         } elseif ($ratio < 0.5) {
@@ -326,6 +386,17 @@ class OpportunityScorer
         }
 
         return $f;
+    }
+
+    /**
+     * An evaluation assumption, not the price a client will accept: the lower quarter of the range
+     * (min + 0.25 x (max - min)), or the one figure given.
+     */
+    public static function realisticBudget(float $min, float $max): float
+    {
+        $point = (float) config('bidradar.opportunity.budget_point', 0.25);
+
+        return $min > 0 && $max > $min ? $min + $point * ($max - $min) : max($min, $max);
     }
 
     private function competition(OpportunityInput $in): array
@@ -338,6 +409,20 @@ class OpportunityScorer
         $bids = $in->bidCount;
         $age = $in->ageMinutes();
         $seen = $age !== null ? sprintf('%d bids %s after posting', $bids, self::minutes($age)) : "{$bids} bids";
+
+        if ($age !== null && $age < ScoreAdjuster::FRESH_MINUTES) {
+            // Very fast early bidding usually meant 100+ bids later in the 28 Oct sample (crowding, not a win predictor).
+            if ($bids >= 30 && $bids / max(1, $age) >= 10) {
+                $f['value'] = 0.35;
+                $f['risks'][] = "Bids arriving fast ({$seen}): likely to get crowded";
+
+                return $f;
+            }
+
+            // Too early to tell how crowded it will get: neutral, neither full marks nor a penalty.
+            return self::unknown($f, "Competition too early to judge ({$seen}).");
+        }
+
         $f['value'] = match (true) {
             $bids <= 10 => 1.0,
             $bids <= 25 => 0.8,
@@ -345,13 +430,7 @@ class OpportunityScorer
             $bids <= 100 => 0.4,
             default => 0.25, // crowded is harder, not unwinnable
         };
-
-        // Very fast early bidding usually meant 100+ bids later in the 28 Oct sample (crowding, not a win predictor).
-        $fresh = $age !== null && $age < ScoreAdjuster::FRESH_MINUTES;
-        if ($fresh && $bids >= 30 && $bids / max(1, $age) >= 10) {
-            $f['value'] = min($f['value'], 0.5);
-            $f['risks'][] = "Bids arriving fast ({$seen}): likely to get crowded";
-        } elseif ($bids <= 10) {
+        if ($bids <= 10) {
             $f['good'][] = "Low competition so far ({$seen})";
         } elseif ($bids > 50) {
             $f['risks'][] = "Crowded ({$seen}): harder to stand out, not unwinnable";
@@ -371,9 +450,9 @@ class OpportunityScorer
 
     /**
      * @param  array<string, mixed>  $scoring
-     * @param  list<string>  $flags
+     * @param  array<string, array{deduction: float, flag: string}>  $concerns
      */
-    private function clarity(array $scoring, ?string $category, array $flags): array
+    private function clarity(array $scoring, ?string $category, array $concerns): array
     {
         $f = self::factor();
         if ($scoring === []) {
@@ -396,34 +475,38 @@ class OpportunityScorer
                 $f['risks'][] = 'Deliverables not clear from the brief';
             } elseif ($deliverables > 6) {
                 $f['risks'][] = "Many separate deliverables ({$deliverables})";
+                unset($concerns['large scope']); // already counted
             }
         }
         if ($dependencies >= 3) {
             $f['value'] -= 0.15;
             $f['risks'][] = "{$dependencies} outside dependencies (accounts, APIs, approvals)";
         }
-        foreach ($flags as $flag) {
-            $f['value'] -= 0.2;
-            $f['risks'][] = 'Red flag: '.self::short($flag);
+        $f['value'] -= min(self::CLARITY_FLAG_CAP, array_sum(array_column($concerns, 'deduction')));
+        foreach ($concerns as $concern => $c) {
+            $f['risks'][] = ucfirst($concern).': '.self::short($c['flag']);
         }
 
         return $f;
     }
 
     /**
+     * Red flags grouped by underlying concern: one entry (the first flag) per concern, under one factor.
+     * Flags matching no concern are kept on the project page by the existing red-flag box, not scored.
+     *
      * @param  list<mixed>  $flags
-     * @return array{client: list<string>, profit: list<string>, clarity: list<string>}
+     * @return array{client: array<string, array{deduction: float, flag: string}>, profit: array<string, array{deduction: float, flag: string}>, clarity: array<string, array{deduction: float, flag: string}>}
      */
-    private function routeFlags(array $flags): array
+    public static function concerns(array $flags): array
     {
         $out = ['client' => [], 'profit' => [], 'clarity' => []];
         foreach ($flags as $flag) {
             if (! is_string($flag) || trim($flag) === '') {
                 continue;
             }
-            foreach (self::FLAG_ROUTES as $factor => $pattern) {
+            foreach (self::CONCERNS as $concern => [$factor, $deduction, $pattern]) {
                 if (preg_match($pattern, $flag)) {
-                    $out[$factor][] = trim($flag);
+                    $out[$factor][$concern] ??= ['deduction' => $deduction, 'flag' => trim($flag)];
 
                     break;
                 }
@@ -440,9 +523,9 @@ class OpportunityScorer
     }
 
     /** Neutral value for missing information; a budget red flag still lowers it. */
-    private static function unknown(array $f, string $note, array $flags = []): array
+    private static function unknown(array $f, string $note, bool $flagged = false): array
     {
-        $f['value'] = $flags !== [] ? 0.3 : 0.5;
+        $f['value'] = $flagged ? 0.3 : 0.5;
         $f['unknown'] = true;
         $f['notes'][] = $note;
 

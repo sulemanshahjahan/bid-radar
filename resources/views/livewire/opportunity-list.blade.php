@@ -65,6 +65,9 @@
                         @if ($o->risks)
                             <p class="mt-0.5 text-xs text-amber-800">− {{ implode(' · ', array_slice($o->risks, 0, 2)) }}</p>
                         @endif
+                        @if ($o->rules)
+                            <p class="mt-0.5 text-xs text-violet-800">Rule: {{ $o->rules[0] }}</p>
+                        @endif
                         <p class="mt-0.5 text-[11px] text-slate-500">{{ $o->action() }}@if ($o->unknowns) · {{ count($o->unknowns) }} unknown @endif</p>
                     @endif
                 </div>

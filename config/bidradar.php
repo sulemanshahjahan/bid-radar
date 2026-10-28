@@ -191,6 +191,12 @@ return [
         'weights' => ['technical' => 25, 'experience' => 25, 'client' => 15, 'profit' => 15, 'competition' => 15, 'clarity' => 5],
         'class_a' => 75,
         'class_b' => 55,
+        // The scoring model's base fit under this caps the class at C (B with strong comparable work in the brief).
+        'low_fit_below' => 20,
+        // Under this base fit (or a weak technical factor) experience credit is limited to technical + 0.2.
+        'weak_fit_below' => 40,
+        // Profitability uses min + budget_point x (max - min): an evaluation assumption, not the accepted price.
+        'budget_point' => 0.25,
         'ranking_stale_days' => 180,
     ],
 
