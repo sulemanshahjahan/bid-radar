@@ -123,7 +123,8 @@ class ScoreProject implements ShouldQueue
             'decided_at' => now()->toIso8601String(),
             'scoring_model' => $settings->get('scoring_model'),
             'rank_rebuild' => (bool) $settings->get('rank_rebuild'),
-            'base_score' => $adjusted['base'],
+            // No base score: with base, score and the listed adjustments, an unlisted client adjustment could be
+            // worked out. The base stays in scoring (purged after 24h).
             'score' => $adjusted['score'],
             // Client-derived adjustments (payment status, client rating/history) are Freelancer client data:
             // left out here. The score above still includes them; they are just not itemized.

@@ -39,7 +39,7 @@ class DiagnosticsMetricsTest extends TestCase
 
         $d = $project->fresh()->decision;
         $this->assertSame('alert_and_draft', $d['decision']);
-        $this->assertSame(90, $d['base_score']);
+        $this->assertArrayNotHasKey('base_score', $d);
         $this->assertSame(90, $d['score']);
         $this->assertSame('fix', $d['category']);
         $this->assertSame(3, $d['estimated_hours']);
@@ -103,6 +103,10 @@ class DiagnosticsMetricsTest extends TestCase
         $d = $project->decision;
         $this->assertSame([['label' => 'quick fix (1-2 days)', 'points' => 10]], $d['adjustments']);
         $this->assertSame($project->fit_score, $d['score'], 'Score still includes every adjustment');
+        $this->assertSame(70, $project->scoring['fit_score'], 'Base score kept only in short-lived scoring');
+        $this->assertSame(75, $project->fit_score, '70 + 10 quick fix + 10 client - 15 payment (no bid penalty: fresh)');
+        $this->assertArrayNotHasKey('base_score', $d, 'No base: the hidden -15 / +10 cannot be worked out');
+        $this->assertStringNotContainsString('"70', json_encode($d));
         $this->assertStringNotContainsStringIgnoringCase('payment', json_encode($d));
         $this->assertStringNotContainsString('client 4.8', json_encode($d));
     }
