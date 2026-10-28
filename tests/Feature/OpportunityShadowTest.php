@@ -123,6 +123,15 @@ class OpportunityShadowTest extends TestCase
             ->assertSeeInOrder(['Big vague build', 'Specialist fix']);
     }
 
+    public function test_an_empty_shortlist_says_so_without_hiding_that_projects_exist(): void
+    {
+        $this->scored(['title' => 'Vague build', 'description' => 'Build an app.'], ['skills' => ['PHP']],
+            ['fit_score' => 10, 'category' => 'new_build', 'quick_fix' => false, 'large_vague_or_off_niche' => true, 'deliverables' => []]);
+
+        Livewire::test(OpportunityList::class)->assertSee('Vague build')
+            ->set('shortlist', true)->assertDontSee('Vague build')->assertSee('No A or B projects right now');
+    }
+
     public function test_the_shadow_page_hides_purged_filtered_and_old_projects(): void
     {
         $this->scored(['title' => 'Purged one', 'purged_at' => now()]);
