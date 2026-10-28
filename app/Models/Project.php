@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 #[Fillable([
     'source', 'freelancer_id', 'url', 'title', 'description', 'details', 'scoring',
@@ -58,10 +60,17 @@ class Project extends Model
         ];
     }
 
-    /** Merge keys into the decision record. */
+    /** Merge keys into the decision record. Measurement only: a failure is logged, never thrown, so it cannot block an alert. */
     public function recordDecision(array $values): void
     {
-        $this->forceFill(['decision' => array_merge($this->decision ?? [], $values)])->save();
+        $saved = $this->getOriginal('decision');
+        try {
+            $this->forceFill(['decision' => array_merge($this->decision ?? [], $values)])->save();
+        } catch (Throwable $e) {
+            // Put the attribute back so the next save (e.g. alerted_at) does not retry the failed write.
+            $this->forceFill(['decision' => $saved])->syncOriginalAttribute('decision');
+            Log::warning('decision record not saved', ['project_id' => $this->id, 'error' => $e->getMessage()]);
+        }
     }
 
     public function drafts(): HasMany

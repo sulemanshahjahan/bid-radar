@@ -87,6 +87,25 @@ class DiagnosticsMetricsTest extends TestCase
         }
     }
 
+    public function test_a_failing_decision_write_never_blocks_the_alert_or_the_draft(): void
+    {
+        Project::saving(function (Project $p) {
+            if ($p->isDirty('decision')) {
+                throw new \RuntimeException('database is locked');
+            }
+        });
+        $project = $this->makeProject(['source' => 'freelancer'], ['bid_count' => 3]);
+        $this->claude->reply($this->scoringReply(['fit_score' => 90]))->reply($this->draftReply(), 'claude-sonnet-5-5');
+
+        ScoreProject::dispatchSync($project->id);
+
+        $project->refresh();
+        $this->assertNotNull($project->alerted_at, 'Alert sent');
+        $this->assertSame(1, $project->drafts()->count(), 'Draft written');
+        $this->assertNull($project->decision);
+        Http::assertSent(fn ($r) => str_contains($r->url(), 'api.telegram.org'));
+    }
+
     public function test_quiet_alert_decision_is_recorded(): void
     {
         app(Settings::class)->set(['quiet_alerts' => true]);
