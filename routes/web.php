@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\TelegramWebhookController;
+use App\Livewire\OpportunityList;
 use App\Livewire\PasteProject;
 use App\Livewire\ProjectList;
 use App\Livewire\ProjectShow;
@@ -22,6 +23,7 @@ Route::middleware('auth')->group(function () {
     Route::livewire('/projects/{project}', ProjectShow::class)->name('projects.show');
     Route::livewire('/stats', StatsPage::class)->name('stats');
     Route::livewire('/settings', SettingsPage::class)->name('settings');
+    Route::livewire('/opportunities', OpportunityList::class)->name('opportunities'); // shadow mode, experimental
 });
 
 Route::post('/telegram/webhook', TelegramWebhookController::class)

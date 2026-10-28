@@ -160,6 +160,38 @@ return [
         'style_notes' => '',
         'portfolio_notes' => '', // what is in my Freelancer profile portfolio (no links)
         'availability_notes' => '', // e.g. "Usually free to start the same day". Drafts only claim what is written here.
+
+        // Opportunity Intelligence only (never sent to the drafting prompt). Owner-reported Freelancer skill
+        // rankings, "Skill | top %". Not verified against the live profile; update them from the profile and
+        // set the date they were read. Undated or old rankings count as weaker evidence.
+        'skill_rankings' => [
+            'Newsletters | 2', 'CSS3 | 3', 'Templates | 5', 'Blog Design | 5', 'HTML5 | 6',
+            'Payment Gateway Integration | 6', 'Plugin | 6', 'LESS/Sass/SCSS | 6', 'Website Testing | 9',
+            'Shopping Cart Integration | 11', 'jQuery / Prototype | 11', 'CMS | 12', 'CSS | 13', 'WordPress | 14',
+            'Web Development | 15', 'Website Management | 16', 'JavaScript | 17', 'Frontend Development | 19',
+            'HTML | 23', 'Shopify Templates | 24', 'Shopify | 25',
+        ],
+        'skill_rankings_as_of' => '', // Y-m-d the rankings were read from the profile; empty = unknown
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Opportunity Intelligence (shadow mode)
+    |--------------------------------------------------------------------------
+    |
+    | A second, personal priority score shown next to the existing one on an
+    | experimental page. It never changes scoring, filters, drafting or alerts,
+    | stores nothing and makes no AI calls. OPPORTUNITY_SHADOW=false hides it.
+    | Class thresholds are provisional until shadow results are reviewed.
+    |
+    */
+
+    'opportunity' => [
+        'enabled' => (bool) env('OPPORTUNITY_SHADOW', true),
+        'weights' => ['technical' => 25, 'experience' => 25, 'client' => 15, 'profit' => 15, 'competition' => 15, 'clarity' => 5],
+        'class_a' => 75,
+        'class_b' => 55,
+        'ranking_stale_days' => 180,
     ],
 
     // Fixed-price scope check: warn (and stop matching the average bid) when the

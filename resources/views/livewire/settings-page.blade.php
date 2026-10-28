@@ -56,6 +56,17 @@
                 <span class="label">Writing style notes</span>
                 <textarea wire:model="form.style_notes" rows="3" class="field"></textarea>
             </label>
+            <label class="block">
+                <span class="label">Skill rankings from your profile (Opportunities page only)</span>
+                <textarea wire:model="form.skill_rankings" rows="5" class="field font-mono text-xs" placeholder="CSS3 | 3&#10;HTML5 | 6"></textarea>
+                <span class="text-xs text-slate-500">One per line: skill | top %. Used to rank opportunities, never sent to drafts.</span>
+            </label>
+            <label class="block">
+                <span class="label">Rankings read on</span>
+                <input type="date" wire:model="form.skill_rankings_as_of" class="field">
+                @error('form.skill_rankings_as_of') <span class="text-xs text-red-600">{{ $message }}</span> @enderror
+                <span class="text-xs text-slate-500">Empty or older than {{ config('bidradar.opportunity.ranking_stale_days') }} days: rankings count as weaker evidence.</span>
+            </label>
         </section>
 
         {{-- Pricing --}}
