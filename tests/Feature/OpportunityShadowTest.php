@@ -146,6 +146,47 @@ class OpportunityShadowTest extends TestCase
             ->assertSeeInOrder(['Cheap Elementor fix', 'Paid Elementor fix']);
     }
 
+    public function test_recommended_puts_actionable_projects_first_within_each_class_and_hides_nothing(): void
+    {
+        PastProject::query()->create(['category' => 'fix', 'problem' => 'Elementor styling conflict on the live site', 'what_i_did' => 'Fixed the CSS', 'result' => 'Positive feedback']);
+        $rich = ['payment_verified' => true, 'rating' => 5.0, 'reviews' => 20, 'projects' => 25];
+        $this->scored(['title' => 'A paid fix'], ['budget_min' => 60, 'budget_max' => 120, 'bid_count' => 40, 'client' => []], ['fit_score' => 70, 'estimated_hours' => 2]);
+        $this->scored(['title' => 'B fair fix'], ['budget_min' => 40, 'budget_max' => 40, 'bid_count' => 40, 'client' => []], ['fit_score' => 60, 'estimated_hours' => 2]);
+        $this->scored(['title' => 'B reconsider fix'], ['budget_min' => 25, 'budget_max' => 25, 'client' => $rich], ['fit_score' => 85, 'estimated_hours' => 2]);
+        $this->scored(['title' => 'B skip fix'], ['budget_min' => 10, 'budget_max' => 12, 'client' => $rich], ['fit_score' => 90, 'estimated_hours' => 3]);
+        $this->scored(['title' => 'C vague build', 'description' => 'Build an app. Details later.'], ['skills' => ['PHP'], 'client' => $rich],
+            ['fit_score' => 10, 'category' => 'new_build', 'quick_fix' => false, 'large_vague_or_off_niche' => true, 'deliverables' => []]);
+
+        $o = collect(app(ShadowRanking::class)->rows())->mapWithKeys(fn ($r) => [$r['project']->title => $r['opportunity']]);
+        $this->assertSame(['A', 'B', 'B', 'B', 'C'], [$o['A paid fix']->class, $o['B fair fix']->class, $o['B reconsider fix']->class, $o['B skip fix']->class, $o['C vague build']->class]);
+        $this->assertSame(Opportunity::RECONSIDER, $o['B reconsider fix']->action());
+        $this->assertSame(Opportunity::SKIP, $o['B skip fix']->action());
+        $this->assertGreaterThan($o['B fair fix']->score, $o['B skip fix']->score, 'precondition: the Skip project outscores the actionable B');
+
+        Livewire::test(OpportunityList::class)
+            ->assertSeeInOrder(['A paid fix', 'B fair fix', 'B reconsider fix', 'B skip fix', 'C vague build'])
+            ->set('sort', 'opportunity') // unchanged: pure score order
+            ->assertSeeInOrder(collect($o)->sortByDesc(fn ($x) => $x->score)->keys()->all());
+    }
+
+    public function test_an_unexpected_a_with_a_budget_warning_keeps_its_class_and_sorts_after_actionable_a(): void
+    {
+        $make = fn (string $class, ?float $ratio) => new Opportunity(80, $class,
+            ['profit' => ['ratio' => $ratio, 'net' => $ratio === null ? null : $ratio * 25, 'unknown' => $ratio === null, 'basis' => 'fixed'], 'experience' => ['good' => []], 'technical' => ['good' => []]],
+            [], [], [], null, ProfileEvidence::STRONG, []);
+
+        $this->assertSame(0, OpportunityList::recommendedGroup($make('A', 1.0)));
+        $this->assertSame(1, OpportunityList::recommendedGroup($odd = $make('A', 0.1)));
+        $this->assertSame('A', $odd->class, 'Never reclassified by the sort');
+        $this->assertSame(2, OpportunityList::recommendedGroup($make('B', 0.8)));
+        $this->assertSame(2, OpportunityList::recommendedGroup($make('B', null)));
+        $this->assertSame(3, OpportunityList::recommendedGroup($make('B', 0.4)));
+        $this->assertSame(4, OpportunityList::recommendedGroup($make('B', 0.1)));
+        $this->assertSame(5, OpportunityList::recommendedGroup($make('C', 0.1)));
+        $this->assertSame(5, OpportunityList::recommendedGroup($make('C', 1.0)));
+        $this->assertSame(6, OpportunityList::recommendedGroup(null));
+    }
+
     public function test_an_empty_shortlist_says_so_without_hiding_that_projects_exist(): void
     {
         $this->scored(['title' => 'Vague build', 'description' => 'Build an app.'], ['skills' => ['PHP']],
