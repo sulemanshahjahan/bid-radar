@@ -9,6 +9,7 @@ use App\Services\BidTracker;
 use App\Services\Settings;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * Fetches new active projects, runs the rules filter, and queues scoring.
@@ -151,14 +152,19 @@ class Poller
 
         $limit = (int) config('bidradar.freelancer.page_limit');
         $returned = count($data['projects']);
-        ApiCall::query()->whereKey($data['call_id'])->update(['meta' => json_encode([
-            'returned' => $returned,
-            'total_count' => $data['total_count'] ?? null,
-            'new' => $new,
-            'known' => $known,
-            'limit' => $limit,
-            'page_full' => $limit > 0 && $returned >= $limit,
-        ])]);
+        try {
+            ApiCall::query()->whereKey($data['call_id'])->update(['meta' => json_encode([
+                'returned' => $returned,
+                'total_count' => $data['total_count'] ?? null,
+                'new' => $new,
+                'known' => $known,
+                'limit' => $limit,
+                'page_full' => $limit > 0 && $returned >= $limit,
+            ])]);
+        } catch (Throwable $e) {
+            // Measurement only: never fail the poll or skip the bid refresh over it.
+            Log::warning('poll counts not saved', ['error' => $e->getMessage()]);
+        }
     }
 
     /** @param array<string, mixed> $raw */
