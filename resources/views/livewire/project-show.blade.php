@@ -132,6 +132,46 @@
         </div>
     @endif
 
+    {{-- Opportunity Intelligence (shadow mode, display only) --}}
+    @if ($opportunity)
+        <details class="rounded-2xl border border-violet-200 bg-white p-4">
+            <summary class="flex cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                <span class="font-semibold">Opportunity {{ $opportunity->score }}</span>
+                <span class="text-slate-500">· existing {{ $project->fit_score ?? '–' }}</span>
+                <span @class(['font-medium', 'text-emerald-700' => $opportunity->class === 'A', 'text-sky-700' => $opportunity->class === 'B', 'text-slate-600' => $opportunity->class === 'C'])>· {{ $opportunity->classLabel() }}</span>
+                <span class="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-800">shadow</span>
+            </summary>
+            <div class="mt-3 space-y-2 text-sm">
+                <p class="text-xs text-slate-500">Experimental. A priority for your attention, not a chance of winning. It changes nothing in alerts or drafting.</p>
+                <p><span class="font-medium">Suggested:</span> {{ $opportunity->action() }}</p>
+                @if ($opportunity->strengths)
+                    <div><p class="font-medium text-emerald-800">Why it stands out</p>
+                        <ul class="list-disc pl-5 text-slate-700">@foreach ($opportunity->strengths as $line) <li>{{ $line }}</li> @endforeach</ul></div>
+                @endif
+                @if ($opportunity->risks)
+                    <div><p class="font-medium text-amber-800">Risks</p>
+                        <ul class="list-disc pl-5 text-slate-700">@foreach ($opportunity->risks as $line) <li>{{ $line }}</li> @endforeach</ul></div>
+                @endif
+                @if ($opportunity->proof)
+                    <p><span class="font-medium">Relevant proof (fact bank):</span> {{ $opportunity->proof }}</p>
+                @endif
+                @if ($opportunity->unknowns)
+                    <div><p class="font-medium text-slate-600">Unknown</p>
+                        <ul class="list-disc pl-5 text-slate-500">@foreach ($opportunity->unknowns as $line) <li>{{ $line }}</li> @endforeach</ul></div>
+                @endif
+                <table class="w-full text-xs">
+                    @foreach ($opportunity->factors as $key => $f)
+                        <tr wire:key="of-{{ $key }}" class="border-t border-slate-100">
+                            <td class="py-1 text-slate-600">{{ $f['label'] }}</td>
+                            <td class="py-1 text-right text-slate-500">{{ $f['level'] }}</td>
+                            <td class="py-1 text-right font-medium">{{ $f['points'] }}/{{ $f['weight'] }}</td>
+                        </tr>
+                    @endforeach
+                </table>
+            </div>
+        </details>
+    @endif
+
     {{-- Draft --}}
     @if ($draft)
         <div class="card space-y-4">

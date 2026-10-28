@@ -13,6 +13,7 @@ use App\Services\DraftGate;
 use App\Services\Drafting\PricingCalculator;
 use App\Services\Freelancer\FreelancerClient;
 use App\Services\Freelancer\FreelancerException;
+use App\Services\Opportunity\ShadowRanking;
 use App\Services\Settings;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
@@ -195,7 +196,7 @@ class ProjectShow extends Component
         }
     }
 
-    public function render(Settings $settings, CostTracker $costs, DraftGate $gate)
+    public function render(Settings $settings, CostTracker $costs, DraftGate $gate, ShadowRanking $shadow)
     {
         $project = $this->project();
 
@@ -214,6 +215,7 @@ class ProjectShow extends Component
             'bidsPerHour' => BidTracker::perHour($project),
             'canRefresh' => config('bidradar.freelancer.polling_enabled') === true && $project->purged_at === null && ($project->freelancer_id !== null || $project->url !== null),
             'versions' => $project->drafts()->count(),
+            'opportunity' => $shadow->forProject($project), // shadow mode: display only
         ])->title($project->displayTitle());
     }
 

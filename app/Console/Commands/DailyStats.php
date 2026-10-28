@@ -6,12 +6,16 @@ use App\Models\ApiCall;
 use App\Models\BidSnapshot;
 use App\Models\DailyStat;
 use App\Models\Project;
+use App\Services\Opportunity\ProfileEvidence;
+use App\Services\Opportunity\ShadowRanking;
 use App\Services\Settings;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * Counts that outlive the 24-hour purge, stored per UTC hour (a day is the sum of its hours).
@@ -104,6 +108,15 @@ class DailyStats extends Command
             $score === null => 'unscored', $score >= $high => 'high', $score >= $medium => 'medium', default => 'low',
         };
 
+        $profile = null;
+        if (ShadowRanking::enabled()) {
+            try {
+                $profile = ProfileEvidence::fromSettings($settings);
+            } catch (Throwable $e) {
+                Log::warning('opportunity counts skipped', ['error' => $e::class]);
+            }
+        }
+
         foreach ($projects as $p) {
             $add('discovered', 'total');
             $add('filter', self::reason($p->filter_reason));
@@ -127,6 +140,11 @@ class DailyStats extends Command
             }
             if ($p->drafts_count > 0) {
                 $add('drafted', 'total');
+            }
+            // Shadow mode: opportunity class (as at scoring time) against the band of the score BidRadar acted on.
+            if ($profile !== null && $p->scored_at !== null && is_array($p->scoring)) {
+                $class = app(ShadowRanking::class)->safeEvaluate($p, $profile, $p->scored_at)['opportunity']?->class ?? 'error';
+                $add('opportunity', $class.'|'.$band(ShadowRanking::decisionScore($p)));
             }
 
             $latest = $p->detail('bid_count');
