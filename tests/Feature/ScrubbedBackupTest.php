@@ -23,6 +23,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use PDO;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /** VACUUM cannot run inside a transaction, so these tests migrate instead of using RefreshDatabase. */
@@ -222,7 +223,7 @@ class ScrubbedBackupTest extends TestCase
         ];
     }
 
-    #[\PHPUnit\Framework\Attributes\DataProvider('restrictedData')]
+    #[DataProvider('restrictedData')]
     public function test_verify_rejects_a_backup_holding_restricted_data(string $plant, string $complaint): void
     {
         $this->seedData();
