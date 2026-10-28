@@ -325,7 +325,7 @@ class OpportunityScorer
         // Independent serious concerns each count, once, up to a cap.
         $value -= min(self::CLIENT_FLAG_CAP, array_sum(array_column($concerns, 'deduction')));
         foreach ($concerns as $concern => $c) {
-            $f['risks'][] = ucfirst($concern).': '.self::short($c['flag']);
+            $f['risks'][] = self::concernLine($concern, $c['flag']);
         }
 
         if ($verified === null && $rating === null && $history === 0 && $concerns === []) {
@@ -502,7 +502,7 @@ class OpportunityScorer
         }
         $f['value'] -= min(self::CLARITY_FLAG_CAP, array_sum(array_column($concerns, 'deduction')));
         foreach ($concerns as $concern => $c) {
-            $f['risks'][] = ucfirst($concern).': '.self::short($c['flag']);
+            $f['risks'][] = self::concernLine($concern, $c['flag']);
         }
 
         return $f;
@@ -548,6 +548,14 @@ class OpportunityScorer
         $f['notes'][] = $note;
 
         return $f;
+    }
+
+    /** "Off-platform contact: Asks to move to WhatsApp"; just the concern when the flag says nothing more. */
+    private static function concernLine(string $concern, string $flag): string
+    {
+        $flag = self::short($flag);
+
+        return strcasecmp(rtrim($flag, '. '), $concern) === 0 ? ucfirst($concern) : ucfirst($concern).': '.$flag;
     }
 
     /** @param list<string> $tags */
