@@ -361,7 +361,8 @@ class OpportunityScorerTest extends TestCase
 
         $this->assertSame('C', $o->class);
         $this->assertContains('Low technical fit: the scoring model rates it 8/100. Capped at C.', $o->rules);
-        $this->assertLessThan(0.3, $o->factors['experience']['value'], 'Broad speed/HTML words earn no strong match');
+        $this->assertNotContains($o->experience, [ProfileEvidence::STRONG, ProfileEvidence::MODERATE], 'Broad speed/HTML words earn no proven match');
+        $this->assertLessThan(0.4, $o->factors['experience']['value']);
     }
 
     public function test_a_low_fit_project_with_a_comparable_specialist_brief_can_reach_b_but_not_a(): void
@@ -377,11 +378,20 @@ class OpportunityScorerTest extends TestCase
     {
         $o = $this->evaluate('R3');
 
-        $this->assertSame(ProfileEvidence::WEAK, $o->experience);
-        $this->assertNull($o->proof);
+        $this->assertSame(ProfileEvidence::UNCERTAIN, $o->experience);
+        $this->assertNull($o->proof, 'An uncertain match is never shown as proof');
         $this->assertContains('Specialist match rests on Freelancer skill labels only: treated as uncertain.', $o->rules);
         $this->assertStringContainsString('skill labels', implode(' ', $o->factors['technical']['notes']));
         $this->assertNotSame('A', $o->class);
+    }
+
+    public function test_an_uncertain_match_sits_between_general_overlap_and_brief_evidence(): void
+    {
+        $uncertain = $this->evaluate('R3')->factors['experience']['value'];
+        $general = $this->evaluate($this->variant('R3', details: ['skills' => ['Website Design']]))->factors['experience']['value'];
+
+        $this->assertGreaterThan($general, $uncertain);
+        $this->assertNotSame('A', $this->evaluate($this->variant('R3', scoring: ['fit_score' => 95, 'quick_fix' => true]))->class, 'Uncertain is never proof for A');
     }
 
     public function test_the_same_brief_words_prove_a_specialist_match(): void
