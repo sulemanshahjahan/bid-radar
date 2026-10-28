@@ -22,8 +22,8 @@ final readonly class OpportunityInput
      * @param  array<string, mixed>  $scoring  the existing scoring reply (category, estimated_hours, deliverables, ...)
      */
     public function __construct(
-        public string $text,
-        public array $details,
+        public string $text, // title and description only: the brief
+        public array $details, // includes skills: Freelancer skill labels, which clients pick loosely
         public array $scoring,
         public ?int $bidCount,
         public ?Carbon $observedAt,
@@ -51,7 +51,7 @@ final readonly class OpportunityInput
         }
 
         return new self(
-            text: trim($project->title."\n".$project->description."\n".implode(' | ', (array) ($details['skills'] ?? []))),
+            text: trim($project->title."\n".$project->description),
             details: $details,
             scoring: $project->scoring ?? [],
             bidCount: $bids,
@@ -73,13 +73,19 @@ final readonly class OpportunityInput
         $observedAt = now();
 
         return new self(
-            text: trim(($case['title'] ?? '')."\n".($case['description'] ?? '')."\n".implode(' | ', (array) ($details['skills'] ?? []))),
+            text: trim(($case['title'] ?? '')."\n".($case['description'] ?? '')),
             details: $details,
             scoring: (array) ($case['scoring'] ?? []),
             bidCount: isset($case['bids']) ? (int) $case['bids'] : null,
             observedAt: $observedAt,
             postedAt: isset($case['age_minutes']) ? $observedAt->copy()->subMinutes((int) $case['age_minutes']) : null,
         );
+    }
+
+    /** @return list<string> */
+    public function skills(): array
+    {
+        return array_values(array_map('strval', (array) ($this->details['skills'] ?? [])));
     }
 
     /** Minutes from posting to the observation, when both are known. */

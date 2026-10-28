@@ -25,7 +25,8 @@ final readonly class Opportunity
      * @param  list<string>  $strengths
      * @param  list<string>  $risks
      * @param  list<string>  $unknowns
-     * @param  list<string>  $tags  capability tags found in the project
+     * @param  list<string>  $tags  capability tags found in the project (brief and skill labels)
+     * @param  list<string>  $rules  classification rules that promoted or restricted this project
      */
     public function __construct(
         public int $score,
@@ -37,6 +38,7 @@ final readonly class Opportunity
         public ?string $proof,
         public string $experience,
         public array $tags,
+        public array $rules = [],
     ) {}
 
     public function classLabel(): string

@@ -144,6 +144,10 @@
             <div class="mt-3 space-y-2 text-sm">
                 <p class="text-xs text-slate-500">Experimental. A priority for your attention, not a chance of winning. It changes nothing in alerts or drafting.</p>
                 <p><span class="font-medium">Suggested:</span> {{ $opportunity->action() }}</p>
+                @if ($opportunity->rules)
+                    <div><p class="font-medium text-violet-800">Rules applied</p>
+                        <ul class="list-disc pl-5 text-slate-700">@foreach ($opportunity->rules as $line) <li>{{ $line }}</li> @endforeach</ul></div>
+                @endif
                 @if ($opportunity->strengths)
                     <div><p class="font-medium text-emerald-800">Why it stands out</p>
                         <ul class="list-disc pl-5 text-slate-700">@foreach ($opportunity->strengths as $line) <li>{{ $line }}</li> @endforeach</ul></div>

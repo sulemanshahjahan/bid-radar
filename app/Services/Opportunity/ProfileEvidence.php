@@ -98,25 +98,41 @@ final class ProfileEvidence
     }
 
     /**
-     * The fact-bank project most like this one. Shared specialist areas count 2, shared general areas 1,
-     * the same scoring category 1. Strong needs a shared specialist area and 4+ points; moderate a shared
-     * specialist area; weak only general overlap (e.g. both WordPress), which proves little.
+     * The fact-bank project most like this one. Each shared family of work counts once (CSS + HTML +
+     * responsive is one front-end family): 2 points when the brief itself names a specialist area of it,
+     * 1 for general overlap or when only Freelancer skill labels suggest it. +1 when two or more specialist
+     * areas of one family are named in the brief, +1 for the same scoring category.
      *
-     * @param  list<string>  $projectTags
-     * @return array{strength: string, shared: list<string>, problem: string, result: string, feedback: bool, repeat: bool}|null
+     * Strong: 3+ points with a specialist area named in the brief. Moderate: a specialist area named in the
+     * brief. Weak: general overlap, or specialist overlap that rests on skill labels only (uncertain).
+     *
+     * @param  list<string>  $briefTags  from the title and description
+     * @param  list<string>  $skillTags  from the Freelancer skill labels
+     * @return array{strength: string, shared: list<string>, problem: string, result: string, feedback: bool, repeat: bool, labels_only: bool}|null
      */
-    public function comparableProject(array $projectTags, ?string $category): ?array
+    public function comparableProject(array $briefTags, ?string $category, array $skillTags = []): ?array
     {
+        $projectTags = array_values(array_unique([...$briefTags, ...$skillTags]));
         $best = null;
         foreach ($this->past as $p) {
             $shared = array_values(array_intersect($projectTags, $p['tags']));
             if ($shared === []) {
                 continue;
             }
-            $specialist = Capabilities::specialist($shared);
-            $points = 2 * count($specialist) + (count($shared) - count($specialist)) + ($category !== null && $category === $p['category'] ? 1 : 0);
+            $briefSpecialist = array_values(array_intersect(Capabilities::specialist($shared), $briefTags));
+            $families = [];
+            foreach ($shared as $tag) {
+                $family = Capabilities::family($tag);
+                $families[$family] = max($families[$family] ?? 0, in_array($tag, $briefSpecialist, true) ? 2 : 1);
+            }
+            $depth = 0;
+            foreach (array_count_values(array_map(Capabilities::family(...), $briefSpecialist)) as $count) {
+                $depth = max($depth, $count >= 2 ? 1 : 0);
+            }
+            $points = array_sum($families) + $depth + ($category !== null && $category === $p['category'] ? 1 : 0);
             if ($best === null || $points > $best['points']) {
-                $best = ['points' => $points, 'specialist' => $specialist, 'shared' => $shared, 'p' => $p];
+                $best = ['points' => $points, 'brief' => $briefSpecialist, 'shared' => $shared, 'p' => $p,
+                    'labels_only' => $briefSpecialist === [] && Capabilities::specialist($shared) !== []];
             }
         }
         if ($best === null) {
@@ -127,10 +143,11 @@ final class ProfileEvidence
 
         return [
             'strength' => match (true) {
-                $best['specialist'] !== [] && $best['points'] >= 4 => self::STRONG,
-                $best['specialist'] !== [] => self::MODERATE,
+                $best['brief'] !== [] && $best['points'] >= 3 => self::STRONG,
+                $best['brief'] !== [] => self::MODERATE,
                 default => self::WEAK,
             },
+            'labels_only' => $best['labels_only'],
             'shared' => $best['shared'],
             'problem' => $best['p']['problem'],
             'result' => $best['p']['result'],
