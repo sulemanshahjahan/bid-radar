@@ -206,6 +206,35 @@ class ScrubbedBackupTest extends TestCase
         $this->artisan('bidradar:backup', ['--verify' => $this->latestBackup()])->expectsOutputToContain('OK:')->assertSuccessful();
     }
 
+    /** @return array<string, array{string, string}> SQL that plants one kind of restricted data in a scrubbed copy, and the expected complaint */
+    public static function restrictedData(): array
+    {
+        return [
+            'project brief (title)' => ["UPDATE projects SET title = 'eyJpdiI6ImJyaWVmIn0=' WHERE id = (SELECT min(id) FROM projects)", 'projects.title'],
+            'project brief (description)' => ["UPDATE projects SET description = 'Fix my checkout' WHERE id = (SELECT min(id) FROM projects)", 'projects.description'],
+            'budget and client details' => ["UPDATE projects SET details = '{\"budget_max\":250,\"client\":{\"payment_verified\":true,\"rating\":4.9}}' WHERE id = (SELECT min(id) FROM projects)", 'projects.details'],
+            'scoring from the brief' => ["UPDATE projects SET scoring = '{\"fit_score\":80}' WHERE id = (SELECT min(id) FROM projects)", 'projects.scoring'],
+            'budget in the filter reason' => ["UPDATE projects SET filter_reason = 'Budget too low (\$16 USD)' WHERE id = (SELECT min(id) FROM projects)", 'projects.filter_reason'],
+            'error text' => ["UPDATE projects SET ai_error = 'Scoring failed' WHERE id = (SELECT min(id) FROM projects)", 'projects.ai_error'],
+            'bid snapshots' => ["INSERT INTO bid_snapshots (project_id, bid_count, recorded_at) VALUES ((SELECT min(id) FROM projects), 42, '2026-10-28 10:00:00')", 'bid_snapshots has 1 row'],
+            'a session' => ["INSERT INTO sessions (id, payload, last_activity) VALUES ('s', 'x', 1)", 'sessions has 1 row'],
+            'a remember token' => ["UPDATE users SET remember_token = 'tok'", 'users.remember_token set'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('restrictedData')]
+    public function test_verify_rejects_a_backup_holding_restricted_data(string $plant, string $complaint): void
+    {
+        $this->seedData();
+        $this->artisan('bidradar:backup')->assertSuccessful();
+        $copy = storage_path('app/backups/tampered.sqlite');
+        File::copy($this->latestBackup(), $copy);
+        $this->pdo($copy)->exec($plant);
+
+        $this->artisan('bidradar:backup', ['--verify' => $copy])->expectsOutputToContain($complaint)->assertFailed();
+        $this->assertSame([], app(ScrubbedBackup::class)->verify($this->latestBackup()), 'The untouched backup still passes');
+    }
+
     // --- Restoration ---------------------------------------------------------------------
 
     public function test_a_scrubbed_backup_restores_into_a_working_bidradar(): void
