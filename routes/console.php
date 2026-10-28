@@ -16,5 +16,5 @@ Schedule::command('bidradar:purge')->hourly();
 // At :30 so it never runs alongside the purge at :00.
 Schedule::command('bidradar:daily-stats')->hourlyAt(30)->withoutOverlapping(30);
 
-// Daily SQLite backup (kept 14 days in storage/app/backups).
-Schedule::command('bidradar:backup')->dailyAt('03:30');
+// Daily scrubbed SQLite backup, no Freelancer project data (kept 14 in storage/app/backups).
+Schedule::command('bidradar:backup')->dailyAt('03:30')->withoutOverlapping(60);
