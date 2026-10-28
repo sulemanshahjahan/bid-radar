@@ -69,7 +69,7 @@ class ScoreProject implements ShouldQueue
         if ($blockers = $gate->blockers($project)) {
             // High fit held back only by unverified payment: still alert me (without a draft) so I can decide.
             $paymentAlert = $live && $high && $gate->onlyPaymentBlocks($project) && ! $paused;
-            $this->recordDecision($project, $result, $adjusted, $settings, $paymentAlert ? 'alert_without_draft' : 'blocked', $blockers);
+            $this->recordDecision($project, $result, $adjusted, $settings, 'held', $blockers);
             if ($paymentAlert) {
                 $telegram->projectAlert($project, note: 'Not drafted: '.RulesFilter::paymentWarning($project->details ?? []).'. Open to draft anyway.');
             }
@@ -110,6 +110,8 @@ class ScoreProject implements ShouldQueue
     /**
      * BidRadar's own decision for later analysis (projects.decision, kept after the purge). Only scores,
      * rule labels and codes: no brief text, and raw bid counts or budgets are stripped from the labels.
+     * Client payment status is Freelancer data, so it is never recorded here, not even as a blocker code
+     * ("held" covers every gate block, including payment).
      *
      * @param  array<string, mixed>  $result  normalized scoring reply
      * @param  array{base: int, adjustments: list<array{label: string, points: int}>, score: int}  $adjusted
@@ -131,7 +133,7 @@ class ScoreProject implements ShouldQueue
             'threshold_high' => $settings->int('threshold_high'),
             'threshold_medium' => $settings->int('threshold_medium'),
             'decision' => $decision,
-            'blockers' => array_values(array_unique(array_map(self::blockerCode(...), $blockers))),
+            'blockers' => array_values(array_unique(array_filter(array_map(self::blockerCode(...), $blockers)))),
         ]);
     }
 
@@ -141,10 +143,11 @@ class ScoreProject implements ShouldQueue
         return trim((string) preg_replace(['/^\d+\s+bids\b/', '/\s*\(\$[\d.,]+\)/'], ['bids', ''], $label));
     }
 
-    public static function blockerCode(string $blocker): string
+    /** Null for the payment blocker: client payment status is not retained. */
+    public static function blockerCode(string $blocker): ?string
     {
         return match (true) {
-            str_contains($blocker, 'payment') => 'payment',
+            str_contains($blocker, 'payment') => null,
             str_starts_with($blocker, 'new build') => 'new_build_bid_limit',
             str_starts_with($blocker, 'score ') => 'below_medium',
             default => 'rules_filter',

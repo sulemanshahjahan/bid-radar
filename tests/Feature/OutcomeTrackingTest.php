@@ -119,6 +119,21 @@ class OutcomeTrackingTest extends TestCase
 
     // --- Stats page -----------------------------------------------------------------
 
+    public function test_stats_buckets_prefer_the_observed_count_and_never_invent_one(): void
+    {
+        $this->bid('fix', 8, ['bid_count_observed' => 45, 'bid_count_observed_at' => now()->subDays(10)->subMinutes(3)]); // observed 45 wins over typed 8
+        $this->bid('fix', 15); // typed only
+        $this->bid('fix', 0, ['bid_count_at_bid' => null]); // neither
+
+        $this->assertSame(['count' => 45, 'source' => 'observed'], StatsPage::bidCount(Project::query()->where('bid_count_observed', 45)->sole()));
+
+        Livewire::test(StatsPage::class)
+            ->assertViewHas('byBucket', fn ($b) => $b['41+']['bids'] === 1 && $b['11-20']['bids'] === 1 && $b['0-10']['bids'] === 0 && $b['unknown']['bids'] === 1)
+            ->assertViewHas('bucketSources', fn ($s) => $s['observed'] === 1 && $s['typed'] === 1 && $s['none'] === 1 && $s['median_lag'] === 180)
+            ->assertSee('1 observed by BidRadar')
+            ->assertSee('1 typed by you');
+    }
+
     public function test_bid_count_buckets(): void
     {
         $this->assertSame('0-10', StatsPage::bucket(0));

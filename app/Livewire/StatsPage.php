@@ -34,6 +34,21 @@ class StatsPage extends Component
     }
 
     /**
+     * Bid count for the buckets: BidRadar's observed count (last seen before Bid placed) when there is one,
+     * else the total I typed. Never estimated: a bid with neither stays "unknown".
+     *
+     * @return array{count: int|null, source: 'observed'|'typed'|null}
+     */
+    public static function bidCount(Project $p): array
+    {
+        return match (true) {
+            $p->bid_count_observed !== null => ['count' => $p->bid_count_observed, 'source' => 'observed'],
+            $p->bid_count_at_bid !== null => ['count' => $p->bid_count_at_bid, 'source' => 'typed'],
+            default => ['count' => null, 'source' => null],
+        };
+    }
+
+    /**
      * @param  Collection<int, Project>  $bids
      * @return array{bids: int, view_rate: int|null, chat_rate: int|null, win_rate: int|null}
      */
@@ -94,14 +109,25 @@ class StatsPage extends Component
             ->sortByDesc('bids');
 
         $byBucket = collect(array_keys(self::BUCKETS))->push('unknown')
-            ->mapWithKeys(fn ($b) => [$b => self::rates($bids->filter(fn (Project $p) => self::bucket($p->bid_count_at_bid) === $b))])
+            ->mapWithKeys(fn ($b) => [$b => self::rates($bids->filter(fn (Project $p) => self::bucket(self::bidCount($p)['count']) === $b))])
             ->filter(fn ($r, $b) => $b !== 'unknown' || $r['bids'] > 0);
+
+        // Where the bucket counts came from, and how stale observed counts were when I marked the bid.
+        $lags = $bids->filter(fn (Project $p) => $p->bid_count_observed_at !== null)
+            ->map(fn (Project $p) => (int) $p->bid_count_observed_at->diffInSeconds($p->bid_placed_at, true))->sort()->values();
+        $bucketSources = [
+            'observed' => $bids->filter(fn (Project $p) => self::bidCount($p)['source'] === 'observed')->count(),
+            'typed' => $bids->filter(fn (Project $p) => self::bidCount($p)['source'] === 'typed')->count(),
+            'none' => $bids->filter(fn (Project $p) => self::bidCount($p)['source'] === null)->count(),
+            'median_lag' => $lags->isEmpty() ? null : (int) $lags->median(),
+        ];
 
         return view('livewire.stats-page', [
             'overall' => self::rates($bids),
             'speed' => self::speed(),
             'byCategory' => $byCategory,
             'byBucket' => $byBucket,
+            'bucketSources' => $bucketSources,
             'byHook' => $byHook,
             'thisWeek' => $bids->filter(fn (Project $p) => $p->bid_placed_at->gte(now()->startOfWeek()))->count(),
             'weeklyCap' => $settings->int('weekly_bid_cap'),
