@@ -26,3 +26,7 @@ Homestead.json
 Homestead.yaml
 Thumbs.db
 /.claude/settings.local.json
+
+# Local AI assistant notes
+/CLAUDE.md
+/AGENTS.md
