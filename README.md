@@ -1,7 +1,7 @@
 # BidRadar
 
-Finds best-fit Freelancer.com projects, scores them with Claude Haiku and drafts a tailored proposal with
-Claude Sonnet. You copy the proposal and bid **manually** on Freelancer. The app never bids for you.
+Finds best-fit Freelancer.com projects, scores them with an AI model and drafts a tailored
+proposal. You copy the proposal and bid **manually** on Freelancer. The app never bids for you.
 
 See `SPEC.md` for the full spec and hard rules.
 
@@ -29,4 +29,4 @@ Set `ANTHROPIC_API_KEY` in `.env` before pasting a project.
 | `php artisan bidradar:skills` | Look up Freelancer skill IDs for the target skills |
 | `php artisan bidradar:purge` | Delete project data older than 24h (scheduled hourly) |
 | `php artisan bidradar:telegram chat-id\|webhook\|test` | Telegram setup helpers |
-| `php artisan test` | Test suite (uses a fake Claude client, costs nothing) |
+| `php artisan test` | Test suite (uses a fake AI client, costs nothing) |
