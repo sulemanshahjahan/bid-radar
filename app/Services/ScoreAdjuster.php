@@ -19,6 +19,14 @@ class ScoreAdjuster
     /** Popular fix jobs collect dozens of bids in the first minutes; that is not "late". */
     public const FRESH_MINUTES = 10;
 
+    /** Budgets at or above these get the smaller bid-count penalty (ScoreAdjuster::wellFunded). */
+    public const WELL_FUNDED_FIXED_USD = 250;
+
+    public const WELL_FUNDED_HOURLY_USD = 25;
+
+    /** A base score under this already reflects off-niche work, so "large or off-niche" does not take more. */
+    public const OFF_NICHE_BASE = 40;
+
     public function __construct(private readonly Settings $settings) {}
 
     /**
@@ -35,20 +43,37 @@ class ScoreAdjuster
 
         $bids = (int) ($details['bid_count'] ?? 0);
         // Scores are re-adjusted on every poll, so the penalty applies once a fresh project ages.
+        // Well-funded projects attract many bids and are still worth a bid: smaller penalty.
         $fresh = self::isFresh($postedAt);
+        $funded = self::wellFunded($details);
         if (! $fresh && $bids >= 31) {
-            $adjustments[] = ['label' => "{$bids} bids (31+)", 'points' => -25];
+            $adjustments[] = ['label' => "{$bids} bids (31+)", 'points' => $funded ? -10 : -25];
         } elseif (! $fresh && $bids >= 16) {
-            $adjustments[] = ['label' => "{$bids} bids (16-30)", 'points' => -10];
+            $adjustments[] = ['label' => "{$bids} bids (16-30)", 'points' => $funded ? -5 : -10];
         }
 
         if ($this->settings->get('rank_rebuild')) {
-            array_push($adjustments, ...$this->rankRebuild($scoring, $details, $text));
+            array_push($adjustments, ...$this->rankRebuild($scoring, $details, $text, $base));
         }
 
         $score = max(0, min(100, $base + array_sum(array_column($adjustments, 'points'))));
 
         return ['base' => $base, 'adjustments' => $adjustments, 'score' => $score];
+    }
+
+    /**
+     * The client's minimum budget (in USD; the top when there is no minimum) is at least
+     * WELL_FUNDED_FIXED_USD for fixed-price work, or WELL_FUNDED_HOURLY_USD an hour for hourly work.
+     *
+     * @param  array<string, mixed>  $details
+     */
+    public static function wellFunded(array $details): bool
+    {
+        $floor = (float) (($details['budget_min'] ?? 0) ?: ($details['budget_max'] ?? 0)) * (float) (($details['exchange_rate'] ?? 1) ?: 1);
+
+        return ($details['type'] ?? 'fixed') === 'hourly'
+            ? $floor >= self::WELL_FUNDED_HOURLY_USD
+            : $floor >= self::WELL_FUNDED_FIXED_USD;
     }
 
     /** Posted less than FRESH_MINUTES ago (live projects pass posted_at, pasted ones null). */
@@ -88,7 +113,7 @@ class ScoreAdjuster
      *
      * @return list<array{label: string, points: int}>
      */
-    private function rankRebuild(array $scoring, array $details, string $text): array
+    private function rankRebuild(array $scoring, array $details, string $text, int $base): array
     {
         $out = [];
         $client = $details['client'] ?? [];
@@ -112,7 +137,8 @@ class ScoreAdjuster
             $out[] = ['label' => $word !== null ? "price shopper (\"{$word}\")" : sprintf('budget top under minimum ($%.0f)', $top), 'points' => -20];
         }
 
-        if (($scoring['large_vague_or_off_niche'] ?? null) === true) {
+        // A low base score already counts the job as off-niche: subtracting again would bury it at 0.
+        if (($scoring['large_vague_or_off_niche'] ?? null) === true && $base >= self::OFF_NICHE_BASE) {
             $out[] = ['label' => 'large or off-niche', 'points' => -20];
         }
 

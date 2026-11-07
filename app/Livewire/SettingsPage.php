@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Http\Controllers\AlertFeedController;
 use App\Models\PastProject;
 use App\Services\CostTracker;
 use App\Services\Freelancer\FreelancerClient;
@@ -9,8 +10,10 @@ use App\Services\Freelancer\Poller;
 use App\Services\Scoring\Scorer;
 use App\Services\Settings;
 use App\Services\Telegram\Telegram;
+use App\Services\WebPush\WebPush;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -26,8 +29,14 @@ class SettingsPage extends Component
         'threshold_high', 'threshold_medium', 'daily_spend_cap_usd', 'weekly_bid_cap',
         'hourly_rate_usd', 'floor_price_usd', 'avg_bid_factor_low', 'avg_bid_factor_high',
         'word_min', 'word_max', 'poll_interval_seconds', 'sponsor_min_budget_usd',
-        'platform_fee_percent', 'delivery_hours_per_day',
+        'platform_fee_percent', 'delivery_hours_per_day', 'push_min_score',
     ];
+
+    /** Stored in the settings table but never put in the form (keys, device subscriptions, token hash). */
+    private const INTERNAL = [WebPush::KEYS, WebPush::SUBSCRIPTIONS, AlertFeedController::TOKEN_HASH];
+
+    /** A newly created alert feed token, shown once. Only its hash is stored. */
+    public ?string $feedToken = null;
 
     private const BOOLEANS = ['quiet_alerts', 'polling_enabled', 'paused', 'rank_rebuild'];
 
@@ -55,6 +64,9 @@ class SettingsPage extends Component
     {
         $defaults = config('bidradar.defaults');
         foreach ($settings->all() as $key => $value) {
+            if (in_array($key, self::INTERNAL, true)) {
+                continue;
+            }
             $value ??= $defaults[$key] ?? null; // a stored null must not hide the default
             $this->form[$key] = in_array($key, self::LISTS, true) ? implode("\n", (array) $value) : $value;
         }
@@ -96,6 +108,7 @@ class SettingsPage extends Component
             'form.poll_interval_seconds' => 'required|integer|min:30|max:3600',
             'form.threshold_high' => 'required|integer|between:1,100|gt:form.threshold_medium',
             'form.threshold_medium' => 'required|integer|between:0,99',
+            'form.push_min_score' => 'required|integer|between:1,100',
             'form.daily_spend_cap_usd' => 'required|numeric|min:0|max:100',
             'form.weekly_bid_cap' => 'required|integer|min:1|max:500',
             'form.sponsor_min_budget_usd' => 'required|numeric|min:0',
@@ -198,6 +211,20 @@ class SettingsPage extends Component
         return (float) $value == (int) $value ? (int) $value : (float) $value;
     }
 
+    /** Create (or replace) the token for the read-only alert feed. Shown once; only the hash is kept. */
+    public function createFeedToken(Settings $settings): void
+    {
+        $this->feedToken = 'brf_'.Str::random(40);
+        $settings->set([AlertFeedController::TOKEN_HASH => hash('sha256', $this->feedToken)]);
+        Log::warning('Alert feed token created on the Settings page', ['user_id' => auth()->id(), 'ip' => request()->ip()]);
+    }
+
+    public function revokeFeedToken(Settings $settings): void
+    {
+        $this->feedToken = null;
+        $settings->set([AlertFeedController::TOKEN_HASH => null]);
+    }
+
     public function editPast(int $id): void
     {
         $p = PastProject::query()->findOrFail($id);
@@ -238,7 +265,7 @@ class SettingsPage extends Component
         $this->resetValidation();
     }
 
-    public function render(CostTracker $costs, Poller $poller, FreelancerClient $freelancer, Telegram $telegram)
+    public function render(CostTracker $costs, Poller $poller, FreelancerClient $freelancer, Telegram $telegram, WebPush $push)
     {
         $lastPoll = Cache::get(Poller::LAST_SUCCESS);
 
@@ -254,6 +281,8 @@ class SettingsPage extends Component
             'backoffUntil' => $freelancer->backoffUntil(),
             'tokenSet' => (bool) config('bidradar.freelancer.oauth_token'),
             'telegramReady' => $telegram->configured(),
+            'pushDevices' => count($push->subscriptions()),
+            'feedTokenSet' => (string) app(Settings::class)->get(AlertFeedController::TOKEN_HASH, '') !== '',
         ]);
     }
 }

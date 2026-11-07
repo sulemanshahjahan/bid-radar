@@ -138,10 +138,14 @@ class Scorer
             <<<'TXT'
             Scoring guide:
             - fit_score 0-100: how likely this freelancer can win and deliver this job well.
-            - Priority, best first: fix/broken feature > security/malware > speed/performance >
-              checkout/payment/integration > ongoing maintenance > B2B/wholesale > new build.
-            - Lower the score for: vague briefs, unrealistic budgets, work outside the services offered,
-              requests to work off-platform.
+            - Preference order, best first: fix/broken feature > security/malware > speed/performance >
+              checkout/payment/integration > ongoing maintenance > B2B/wholesale > new build. It only breaks
+              ties between equally good jobs. It is not a penalty.
+            - A new website, store or custom web app (marketplace, membership site, MVP, portal) built in a
+              stack the freelancer offers is good work: score it on fit and clarity like any other job.
+            - Do not lower the score because the budget is small or looks low for the scope: the freelancer
+              sets their own price and takes small budgets.
+            - Lower the score for: vague briefs, work outside the services offered, requests to work off-platform.
             - Fix work is often briefed in a line or two, with the list of fixes given later in chat
               ("needs 17 fixes", "a few issues on my site"). For fixes on an existing site that is normal,
               not a strong reason to lower the score: the proposal can ask what the fixes are.

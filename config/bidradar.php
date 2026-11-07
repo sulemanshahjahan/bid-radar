@@ -112,6 +112,7 @@ return [
         'threshold_high' => 75,
         'threshold_medium' => 50,
         'quiet_alerts' => false,
+        'push_min_score' => 1, // browser push for live projects scored at or above this (owner decision 2026-11-07: score > 0)
         'rank_rebuild' => false, // extra score adjustments to rebuild ranking with quick wins
 
         // Models

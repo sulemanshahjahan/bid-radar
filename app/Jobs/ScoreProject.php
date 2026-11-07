@@ -10,8 +10,10 @@ use App\Services\ScoreAdjuster;
 use App\Services\Scoring\Scorer;
 use App\Services\Settings;
 use App\Services\Telegram\Telegram;
+use App\Services\WebPush\WebPush;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class ScoreProject implements ShouldQueue
@@ -63,6 +65,12 @@ class ScoreProject implements ShouldQueue
         $live = $project->source === 'freelancer';
         $paused = (bool) $settings->get('paused');
 
+        // Browser push first (seconds count): every live project at or above push_min_score,
+        // whatever the draft gate decides below. Once per project.
+        if ($live && ! $paused && $adjusted['score'] >= max(1, $settings->int('push_min_score'))) {
+            $this->push($project->fresh());
+        }
+
         // Filtered projects (rules, new build with too many bids, low score) are never drafted
         // or alerted automatically, pasted or live. The owner can still draft anyway.
         $project = $project->fresh();
@@ -104,6 +112,19 @@ class ScoreProject implements ShouldQueue
         });
         if ($quiet) {
             $telegram->projectAlert($project->fresh(), quiet: true);
+        }
+    }
+
+    private function push(Project $project): void
+    {
+        if (isset(($project->decision ?? [])['push'])) {
+            return;
+        }
+        try {
+            $sent = app(WebPush::class)->projectAlert($project);
+            $project->recordDecision(['push' => ['sent_at' => now()->toIso8601String(), 'devices' => $sent]]);
+        } catch (Throwable $e) {
+            Log::warning('Browser push for a project failed', ['project_id' => $project->id, 'error' => $e->getMessage()]);
         }
     }
 

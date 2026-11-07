@@ -140,6 +140,40 @@
             <label class="block"><span class="label">"New build" phrases (one per line)</span><textarea wire:model="form.new_build_phrases" rows="3" class="field text-xs"></textarea></label>
         </section>
 
+        {{-- Browser push --}}
+        <section class="card space-y-3" x-data="{ status: '' }">
+            <div>
+                <h2 class="font-semibold">Browser push</h2>
+                <p class="text-xs text-slate-500">A notification on this device for every live project scored at or above the score below, sent as soon as it is scored.</p>
+            </div>
+            <label class="block max-w-40">
+                <span class="label">Push at score ≥</span>
+                <input type="number" min="1" max="100" wire:model="form.push_min_score" class="field">
+                @error('form.push_min_score') <span class="text-xs text-red-600">{{ $message }}</span> @enderror
+            </label>
+            <p class="text-xs text-slate-600">Subscribed devices: <span class="font-medium">{{ $pushDevices }}</span></p>
+            <div class="flex flex-wrap gap-2">
+                <button type="button" class="btn-primary" x-on:click="status = 'Working...'; status = await window.bidPush.enable(); $wire.$refresh()">Enable on this device</button>
+                <button type="button" class="btn" x-on:click="status = 'Sending...'; status = await window.bidPush.test()">Send test</button>
+                <button type="button" class="btn" x-on:click="status = await window.bidPush.disable(); $wire.$refresh()">Disable on this device</button>
+            </div>
+            <p class="text-xs text-slate-600" x-show="status" x-text="status" x-cloak></p>
+
+            <div class="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 space-y-2">
+                <p><span class="font-medium">Alert feed token</span>: {{ $feedTokenSet ? 'set' : 'not set' }}. Lets your bidding assistant read the pushed projects at <code>/alerts/feed</code> (read-only).</p>
+                @if ($feedToken)
+                    <p class="break-all rounded bg-amber-50 px-2 py-1 font-mono text-amber-900" data-feed-token>{{ $feedToken }}</p>
+                    <p class="text-amber-800">Copy it now: it is shown only once.</p>
+                @endif
+                <div class="flex gap-2">
+                    <button type="button" class="btn" wire:click="createFeedToken" wire:confirm="{{ $feedTokenSet ? 'Replace the current token? The old one stops working.' : 'Create a feed token?' }}">{{ $feedTokenSet ? 'Replace token' : 'Create token' }}</button>
+                    @if ($feedTokenSet)
+                        <button type="button" class="btn" wire:click="revokeFeedToken" wire:confirm="Revoke the feed token?">Revoke</button>
+                    @endif
+                </div>
+            </div>
+        </section>
+
         {{-- Alerts + polling --}}
         <section class="card space-y-3">
             <h2 class="font-semibold">Alerts and polling</h2>
@@ -150,7 +184,7 @@
             <label class="flex items-start gap-2 text-sm">
                 <input type="checkbox" wire:model="form.rank_rebuild" class="mt-0.5 rounded border-slate-300 text-teal-600">
                 <span>Rank rebuild mode
-                    <span class="block text-xs text-slate-500">+10 quick fixes (1-2 days), +10 clients rated 4.8+ with 3+ projects, -15 unverified payment, -20 price shoppers or budget under minimum, -20 large or off-niche work.</span>
+                    <span class="block text-xs text-slate-500">+10 quick fixes (1-2 days), +10 clients rated 4.8+ with 3+ projects, -15 unverified payment, -20 price shoppers or budget under minimum, -20 large or off-niche work (only when the base score is 40+). Bid-count penalties are smaller when the client's minimum budget is $250+ ($25+/hr).</span>
                 </span>
             </label>
             <label class="flex items-center gap-2 text-sm {{ $pollingAllowed ? '' : 'text-slate-400' }}">
