@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Jobs\Concerns\RetriesDatabaseLocks;
 use App\Models\Project;
 use App\Services\CostTracker;
 use App\Services\DraftGate;
@@ -18,9 +19,10 @@ use Throwable;
 
 class ScoreProject implements ShouldQueue
 {
-    use Queueable;
+    use Queueable, RetriesDatabaseLocks;
 
-    public int $tries = 1;
+    /** Only a "database is locked" error is retried (RetriesDatabaseLocks); every other failure is final. */
+    public int $tries = 3;
 
     public int $timeout = 180;
 
@@ -41,6 +43,11 @@ class ScoreProject implements ShouldQueue
 
     public function handle(Scorer $scorer, Settings $settings, Telegram $telegram, DraftGate $gate, ScoreAdjuster $adjuster, CostTracker $costs): void
     {
+        $this->retryingDatabaseLocks(fn () => $this->process($scorer, $settings, $telegram, $gate, $adjuster, $costs));
+    }
+
+    private function process(Scorer $scorer, Settings $settings, Telegram $telegram, DraftGate $gate, ScoreAdjuster $adjuster, CostTracker $costs): void
+    {
         $project = Project::query()->find($this->projectId);
         if ($project === null || $project->purged_at !== null) {
             return;
@@ -51,6 +58,9 @@ class ScoreProject implements ShouldQueue
         try {
             $result = $scorer->score($project);
         } catch (Throwable $e) {
+            if (self::isDatabaseLock($e)) {
+                throw $e; // released and run again in a few seconds
+            }
             $project->update(['ai_state' => 'failed', 'ai_error' => 'Scoring failed: '.$e->getMessage()]);
 
             return;

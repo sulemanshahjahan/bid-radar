@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Jobs\Concerns\RetriesDatabaseLocks;
 use App\Models\Project;
 use App\Services\CostTracker;
 use App\Services\Drafting\Drafter;
@@ -13,9 +14,10 @@ use Throwable;
 
 class DraftProject implements ShouldQueue
 {
-    use Queueable;
+    use Queueable, RetriesDatabaseLocks;
 
-    public int $tries = 1;
+    /** Only a "database is locked" error is retried (RetriesDatabaseLocks); every other failure is final. */
+    public int $tries = 2;
 
     public int $timeout = 300;
 
@@ -46,6 +48,11 @@ class DraftProject implements ShouldQueue
 
     public function handle(Drafter $drafter, CostTracker $costs, ?Telegram $telegram = null, ?Settings $settings = null): void
     {
+        $this->retryingDatabaseLocks(fn () => $this->process($drafter, $costs, $telegram, $settings));
+    }
+
+    private function process(Drafter $drafter, CostTracker $costs, ?Telegram $telegram, ?Settings $settings): void
+    {
         $project = Project::query()->find($this->projectId);
         if ($project === null || $project->purged_at !== null) {
             return;
@@ -73,6 +80,9 @@ class DraftProject implements ShouldQueue
         try {
             $drafter->draft($project, $this->instruction, fast: $this->fast);
         } catch (Throwable $e) {
+            if (self::isDatabaseLock($e)) {
+                throw $e; // released and retried; a draft already saved is never redrafted (see above)
+            }
             $project->update(['ai_state' => 'failed', 'ai_error' => 'Drafting failed: '.$e->getMessage()]);
             $this->sendAlert($project, $telegram, $settings);
 
