@@ -10,7 +10,8 @@ use Illuminate\Support\Carbon;
 
 /**
  * Read-only JSON list of the projects that were pushed as alerts (live, scored at or above
- * push_min_score), for the owner's own bidding assistant. Needs the feed token created on the
+ * push_min_score), for the owner's own bidding assistant. A project is listed when it was scored
+ * after `since`, and again when its draft was written after `since`. Needs the feed token created on the
  * Settings page, sent as "Authorization: Bearer <token>". Only its SHA-256 hash is stored.
  */
 class AlertFeedController extends Controller
@@ -27,11 +28,14 @@ class AlertFeedController extends Controller
 
         $since = Carbon::createFromTimestamp(max(0, (int) $request->query('since', (string) now()->subHour()->getTimestamp())));
 
+        // A project comes back a second time once its draft is written (draft_ready_at), so a
+        // watcher that saw it at scoring time, before the draft existed, also gets the draft.
         $projects = Project::query()
             ->where('source', 'freelancer')
             ->whereNull('purged_at')
             ->whereNotNull('scored_at')
-            ->where('scored_at', '>', $since)
+            ->where(fn ($q) => $q->where('scored_at', '>', $since)
+                ->orWhereHas('drafts', fn ($d) => $d->where('created_at', '>', $since)))
             ->where('fit_score', '>=', max(1, $settings->int('push_min_score')))
             ->orderBy('scored_at')
             ->limit(20)
@@ -54,6 +58,7 @@ class AlertFeedController extends Controller
         return [
             'id' => $p->id,
             'scored_at' => $p->scored_at?->getTimestamp(),
+            'draft_ready_at' => $draft?->created_at?->getTimestamp(),
             'posted_at' => $p->posted_at?->getTimestamp(),
             'score' => $p->fit_score,
             'category' => $p->category,

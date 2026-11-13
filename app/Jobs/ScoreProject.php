@@ -24,7 +24,13 @@ class ScoreProject implements ShouldQueue
 
     public int $timeout = 180;
 
-    public function __construct(public readonly int $projectId) {}
+    /** Its own queue, worked first (queue:work --queue=scoring,default,drafting): a long draft never delays scoring. */
+    public const QUEUE = 'scoring';
+
+    public function __construct(public readonly int $projectId)
+    {
+        $this->onQueue(self::QUEUE);
+    }
 
     /** The job died outside handle()'s own error handling (e.g. a database lock): never leave it "queued". */
     public function failed(?Throwable $e): void
@@ -98,7 +104,8 @@ class ScoreProject implements ShouldQueue
             if ($alerting) {
                 $telegram->projectAlert($project, capReached: $capReached, draftComing: ! $capReached);
             }
-            DraftProject::dispatch($project->id, alert: $alerting && ! $capReached);
+            // Automatic drafts are fast drafts (one pass, alert effort): the owner bids on them within minutes.
+            DraftProject::dispatch($project->id, alert: $alerting && ! $capReached, fast: true);
 
             return;
         }

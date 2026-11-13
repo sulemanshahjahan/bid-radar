@@ -41,7 +41,7 @@ class SettingsPage extends Component
     private const BOOLEANS = ['quiet_alerts', 'polling_enabled', 'paused', 'rank_rebuild'];
 
     private const TEXTS = [
-        'scoring_model', 'scoring_effort', 'drafting_model', 'drafting_effort',
+        'scoring_model', 'scoring_effort', 'drafting_model', 'drafting_effort', 'alert_drafting_effort',
         'positioning', 'stats_rating', 'stats_reviews', 'stats_completion', 'stats_on_time',
         'services_offered', 'services_not_offered', 'turnaround_notes', 'style_notes', 'portfolio_notes',
         'availability_notes', 'skill_rankings_as_of',
@@ -124,6 +124,7 @@ class SettingsPage extends Component
             'form.drafting_model' => 'required|string|in:'.implode(',', array_keys(config('bidradar.prices'))),
             'form.scoring_effort' => 'required|'.$efforts,
             'form.drafting_effort' => 'required|'.$efforts,
+            'form.alert_drafting_effort' => 'required|'.$efforts,
             'form.positioning' => 'nullable|string|max:3000',
             'form.services_offered' => 'nullable|string|max:3000',
             'form.services_not_offered' => 'nullable|string|max:3000',

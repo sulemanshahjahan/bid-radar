@@ -21,7 +21,8 @@ use App\Services\Settings;
  * code post-checks. In one call the model plans (problem, instructions, three
  * hook candidates), writes, and rates its draft. One retry with the failure
  * reasons, or, when the checks pass but the self-rating is weak, one revision;
- * if checks still fail, the draft is saved with its failures listed.
+ * if checks still fail, the draft is saved with its failures listed. A fast
+ * (automatic) draft skips the quality revision and uses the alert drafting effort.
  */
 class Drafter
 {
@@ -37,7 +38,11 @@ class Drafter
         private readonly PostChecker $checker,
     ) {}
 
-    public function draft(Project $project, ?string $instruction = null): Draft
+    /**
+     * @param  bool  $fast  Automatic draft right after scoring, for bidding within minutes: no quality
+     *                      revision (the hard-check retry stays) and the alert drafting effort.
+     */
+    public function draft(Project $project, ?string $instruction = null, bool $fast = false): Draft
     {
         $hours = $project->score('estimated_hours');
         $hours = is_numeric($hours) ? (int) $hours : null;
@@ -102,7 +107,11 @@ class Drafter
         $failures = [];
         $draft = null;
         $revised = null;
-        $minQuality = (int) config('bidradar.min_draft_quality', 60);
+        // A fast draft never takes a second call for quality alone: a weak self-rating is kept as it is.
+        $minQuality = $fast ? 0 : (int) config('bidradar.min_draft_quality', 60);
+        $effort = (string) ($fast
+            ? $this->settings->get('alert_drafting_effort', 'low')
+            : $this->settings->get('drafting_effort', 'medium'));
 
         // First attempt, then at most one more: a retry with the failure reasons, or a
         // revision of a draft that passed the checks but rated itself weak.
@@ -123,7 +132,7 @@ class Drafter
             }
 
             try {
-                $candidate = $this->ask($project, $system, $content, $price, $days);
+                $candidate = $this->ask($project, $system, $content, $price, $days, $effort);
             } catch (InvalidReplyException $e) {
                 if ($attempts === 2 && $draft === null) {
                     throw $e;
@@ -169,7 +178,7 @@ class Drafter
             'instruction' => $instruction ? mb_substr($instruction, 0, 250) : null,
             'attempts' => $attempts,
             'prompt_version' => self::PROMPT_VERSION,
-            'strategy' => ($draft['strategy'] ?? []) + ['size' => $length['size'], 'revised' => $revised, 'scope_mode' => $scopeMode],
+            'strategy' => ($draft['strategy'] ?? []) + ['size' => $length['size'], 'revised' => $revised, 'scope_mode' => $scopeMode, 'fast' => $fast, 'effort' => $effort],
         ]);
     }
 
@@ -178,7 +187,7 @@ class Drafter
      * @param  array{amount: float, currency: string, is_hourly: bool, minimum: float, reason: string, warning: string|null}  $price
      * @return array<string, mixed>
      */
-    private function ask(Project $project, array $system, string $content, array $price, ?int $days): array
+    private function ask(Project $project, array $system, string $content, array $price, ?int $days, string $effort): array
     {
         $model = $this->settings->get('drafting_model');
         $request = new ClaudeRequest(
@@ -186,7 +195,7 @@ class Drafter
             system: $system,
             userContent: $content,
             schema: self::schema(),
-            effort: $this->settings->get('drafting_effort', 'medium'),
+            effort: $effort,
             maxTokens: 8000,
             fallbacks: (bool) config('bidradar.claude.drafting_fallbacks') && str_starts_with($model, 'claude-sonnet'),
         );

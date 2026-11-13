@@ -235,7 +235,8 @@ Learning loop: when I mark a bid **Won**, its final proposal text (my edited ver
 
 - New site on my Forge server, on a subdomain I choose, with a free Let's Encrypt SSL certificate.
 - Scheduler: `php artisan schedule:run` every minute (Forge Scheduler).
-- Queue worker: `php artisan queue:work` (Forge Daemon). Scoring, drafting, and alerts run as queued jobs.
+- Queue worker: `php artisan queue:work --queue=scoring,default,drafting --timeout=330` (Forge Daemon). Scoring (`scoring` queue) is always worked before drafting (`drafting` queue), so a draft never delays scoring. Change the daemon command before deploying code that uses these queues; optionally add a second daemon for `--queue=drafting` alone.
+- Automatic drafts after scoring are fast drafts: one pass at `alert_drafting_effort` (default `low`), no quality revision (the hard-check retry stays). The alert feed lists a project again when its draft is written (`draft_ready_at`).
 - Deploy from a private GitHub repo with Forge's deploy script.
 - Daily SQLite backup.
 

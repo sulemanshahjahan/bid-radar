@@ -19,16 +19,23 @@ class DraftProject implements ShouldQueue
 
     public int $timeout = 300;
 
+    /** Its own queue, worked after scoring (queue:work --queue=scoring,default,drafting). */
+    public const QUEUE = 'drafting';
+
     /**
      * @param  bool  $regenerate  Only an explicit Regenerate may draft a project that already has a draft.
      * @param  bool  $alert  Send the Telegram alert once the draft is ready (high-fit live projects).
+     * @param  bool  $fast  Automatic draft right after scoring: one pass at the alert drafting effort (Drafter::draft).
      */
     public function __construct(
         public readonly int $projectId,
         public readonly bool $regenerate = false,
         public readonly ?string $instruction = null,
         public readonly bool $alert = false,
-    ) {}
+        public readonly bool $fast = false,
+    ) {
+        $this->onQueue(self::QUEUE);
+    }
 
     /** The job died outside handle()'s own error handling (e.g. a database lock): never leave it "queued". */
     public function failed(?Throwable $e): void
@@ -64,7 +71,7 @@ class DraftProject implements ShouldQueue
         $project->update(['ai_state' => 'drafting', 'ai_error' => null]);
 
         try {
-            $drafter->draft($project, $this->instruction);
+            $drafter->draft($project, $this->instruction, fast: $this->fast);
         } catch (Throwable $e) {
             $project->update(['ai_state' => 'failed', 'ai_error' => 'Drafting failed: '.$e->getMessage()]);
             $this->sendAlert($project, $telegram, $settings);

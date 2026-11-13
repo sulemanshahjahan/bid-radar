@@ -119,7 +119,8 @@ return [
         'scoring_model' => 'claude-haiku-5-5',
         'scoring_effort' => 'low',
         'drafting_model' => 'claude-sonnet-5-5',
-        'drafting_effort' => 'medium',
+        'drafting_effort' => 'medium', // Draft / Regenerate tapped in the app
+        'alert_drafting_effort' => 'low', // automatic drafts after scoring: one pass, ready to bid within minutes
 
         // Cost and volume
         'daily_spend_cap_usd' => 2.00,

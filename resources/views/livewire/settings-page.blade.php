@@ -117,6 +117,11 @@
                     <span class="label">Drafting effort</span>
                     <select wire:model="form.drafting_effort" class="field">@foreach (['low', 'medium', 'high'] as $e)<option>{{ $e }}</option>@endforeach</select>
                 </label>
+                <label class="block">
+                    <span class="label">Automatic draft effort</span>
+                    <select wire:model="form.alert_drafting_effort" class="field">@foreach (['low', 'medium', 'high'] as $e)<option>{{ $e }}</option>@endforeach</select>
+                    <span class="text-xs text-slate-500">Drafts made right after scoring: one pass, no quality revision, so they are ready to bid on within minutes.</span>
+                </label>
                 <label class="block"><span class="label">Daily AI spend cap ($)</span><input type="number" step="0.01" wire:model="form.daily_spend_cap_usd" class="field"> @error('form.daily_spend_cap_usd') <span class="text-xs text-red-600">{{ $message }}</span> @enderror</label>
                 <label class="block"><span class="label">Weekly bid cap</span><input type="number" wire:model="form.weekly_bid_cap" class="field"> @error('form.weekly_bid_cap') <span class="text-xs text-red-600">{{ $message }}</span> @enderror</label>
                 <label class="block"><span class="label">"Worth sponsoring" min budget ($)</span><input type="number" step="any" wire:model="form.sponsor_min_budget_usd" class="field"> @error('form.sponsor_min_budget_usd') <span class="text-xs text-red-600">{{ $message }}</span> @enderror</label>

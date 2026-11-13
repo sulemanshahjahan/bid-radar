@@ -20,7 +20,7 @@ use Throwable;
  * bank, prints each proposal, and saves nothing except the API cost log (so the
  * daily cap still counts it). Used to compare prompt versions on the same briefs.
  */
-#[Signature('bidradar:try-drafts {--only= : Comma-separated brief keys, e.g. A,B,C} {--file= : Briefs file (default tests/fixtures/proposals/briefs.php)} {--out= : Also write the results as JSON to this path}')]
+#[Signature('bidradar:try-drafts {--only= : Comma-separated brief keys, e.g. A,B,C} {--file= : Briefs file (default tests/fixtures/proposals/briefs.php)} {--out= : Also write the results as JSON to this path} {--fast : Draft as an automatic (alert) draft: one pass at the alert drafting effort}')]
 #[Description('Score and draft the evaluation briefs with the real models, without saving projects or drafts')]
 class TryDrafts extends Command
 {
@@ -56,7 +56,7 @@ class TryDrafts extends Command
                 ]);
                 $scoring = $scorer->score($project);
                 $project->update(['scoring' => $scoring, 'category' => $scoring['category'], 'fit_score' => $scoring['fit_score']]);
-                $draft = $drafter->draft($project->fresh());
+                $draft = $drafter->draft($project->fresh(), fast: (bool) $this->option('fast'));
                 $results[$key] = [
                     'name' => $brief['name'],
                     'expect' => $brief['expect'] ?? '',
@@ -78,6 +78,11 @@ class TryDrafts extends Command
             } finally {
                 $calls = ApiCall::query()->where('id', '>', $lastCall)->get()
                     ->map(fn (ApiCall $c) => array_merge(Arr::except($c->getAttributes(), ['id']), ['project_id' => null]))->all();
+                // Per-call timings, so draft latency can be compared between settings.
+                $results[$key]['timings'] = array_map(fn (array $c) => [
+                    'purpose' => $c['purpose'], 'model' => $c['model'], 'status' => $c['status'],
+                    'duration_ms' => $c['duration_ms'], 'output_tokens' => $c['output_tokens'] ?? null,
+                ], $calls);
                 DB::rollBack();
                 // Keep the spend on record: the cap must still see it.
                 if ($calls !== []) {
@@ -106,6 +111,9 @@ class TryDrafts extends Command
 
             return;
         }
+        $draftMs = array_sum(array_column(array_filter($r['timings'] ?? [], fn ($t) => $t['purpose'] === 'draft'), 'duration_ms'));
+        $this->line(sprintf('  draft time %.1fs over %d call(s)%s', $draftMs / 1000, count(array_filter($r['timings'] ?? [], fn ($t) => $t['purpose'] === 'draft')),
+            ! empty($r['strategy']['fast']) ? ' (fast: '.($r['strategy']['effort'] ?? '?').' effort)' : ''));
         $this->line(sprintf('  %s · %s · est %s h · delivery %s · bid %s · %d words · %d attempt(s)',
             $r['prompt_version'], $r['category'], $r['estimated_hours'] ?? '?', $r['delivery_days'] ?? 'none', $r['bid'], $r['words'], $r['attempts']));
         if (! empty($r['strategy']['hook_type'])) {
