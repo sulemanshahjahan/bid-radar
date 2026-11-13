@@ -31,7 +31,8 @@ php artisan queue:work --queue=scoring,default,drafting --timeout=330
 On Forge, change the queue daemon command to the line above **before** deploying this code (the old code
 only uses `default`, which the new command still works). If the code goes out first with the old
 `php artisan queue:work`, new projects sit unscored on the `scoring` queue until the daemon is changed.
-For drafts in parallel with scoring, add a second daemon: `php artisan queue:work --queue=drafting --timeout=330`.
+Production runs this daemon with `numprocs=2` (SQLite in WAL mode with a busy timeout handles the two workers), so a draft
+in progress never holds up the next project's scoring.
 
 Automatic drafts (made right after scoring) are fast drafts: one pass at the "Automatic draft effort"
 setting (default `low`), with no quality revision; the hard-check retry still runs. Draft / Regenerate in
