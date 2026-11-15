@@ -77,7 +77,17 @@ class ProjectShow extends Component
         }
 
         $project->update(['ai_state' => 'queued', 'ai_error' => null]);
-        DraftProject::dispatch($project->id);
+        // A live project posted in the last FRESH_DRAFT_MINUTES is a bidding race: one fast pass (automatic
+        // draft model and schema) instead of the full quality draft. Regenerate still gives the full draft.
+        DraftProject::dispatch($project->id, fast: self::isFresh($project));
+    }
+
+    public const FRESH_DRAFT_MINUTES = 30;
+
+    public static function isFresh(\App\Models\Project $project): bool
+    {
+        return $project->source === 'freelancer' && $project->posted_at !== null
+            && $project->posted_at->diffInMinutes(now(), true) < self::FRESH_DRAFT_MINUTES;
     }
 
     public function regenerate(CostTracker $costs): void

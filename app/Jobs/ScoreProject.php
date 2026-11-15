@@ -130,6 +130,10 @@ class ScoreProject implements ShouldQueue
         if ($quiet) {
             $telegram->projectAlert($project->fresh(), quiet: true);
         }
+        // Medium-fit live projects get a fast draft too (no alert), so a bid can go out within seconds.
+        if ($live && $medium && ! $paused && $settings->get('auto_draft_medium') && ! $costs->capReached()) {
+            DraftProject::dispatch($project->id, alert: false, fast: true);
+        }
     }
 
     private function push(Project $project): void

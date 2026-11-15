@@ -196,4 +196,30 @@ class FastDraftTest extends TestCase
         // Still token-protected.
         $this->withToken('wrong')->get('/alerts/feed?since='.$since)->assertStatus(401);
     }
+
+    public function test_a_medium_fit_live_project_gets_a_fast_draft_without_an_alert(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+        app(\App\Services\Settings::class)->set(['threshold_high' => 65, 'threshold_medium' => 40, 'auto_draft_medium' => true]);
+        $project = $this->makeProject(['source' => 'freelancer', 'posted_at' => now()], ['payment_verified' => true]);
+        $this->claude->reply($this->scoringReply(['fit_score' => 55]));
+
+        app()->call([new \App\Jobs\ScoreProject($project->id), 'handle']);
+
+        \Illuminate\Support\Facades\Queue::assertPushed(DraftProject::class, fn ($job) => $job->projectId === $project->id && $job->fast && ! $job->alert);
+    }
+
+    public function test_draft_tapped_on_a_fresh_live_project_is_fast_and_on_an_old_one_is_full(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+        $this->actingAs(\App\Models\User::factory()->create());
+        $fresh = $this->makeProject(['source' => 'freelancer', 'posted_at' => now()->subMinutes(2)], [], $this->scoringReply());
+        $old = $this->makeProject(['source' => 'freelancer', 'posted_at' => now()->subHours(3)], [], $this->scoringReply());
+
+        \Livewire\Livewire::test(\App\Livewire\ProjectShow::class, ['project' => $fresh])->call('draft');
+        \Livewire\Livewire::test(\App\Livewire\ProjectShow::class, ['project' => $old])->call('draft');
+
+        \Illuminate\Support\Facades\Queue::assertPushed(DraftProject::class, fn ($job) => $job->projectId === $fresh->id && $job->fast);
+        \Illuminate\Support\Facades\Queue::assertPushed(DraftProject::class, fn ($job) => $job->projectId === $old->id && ! $job->fast);
+    }
 }
