@@ -87,6 +87,16 @@ class FastBiddingTest extends TestCase
         $this->assertSame(6, $data['hrs']);
         $this->assertFalse($data['h']);
         $this->assertStringContainsString("café's checkout", $data['t']);
+        $this->assertSame('/projects/php/Fix-My-Site', $data['u']);
+    }
+
+    public function test_fill_bid_also_copies_the_bid_for_the_bookmarklet(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $project = $this->projectWithDraft();
+
+        $this->assertStringStartsWith('BIDRADAR:', BidFill::clipboardText($project));
+        $this->get(route('projects.show', $project))->assertOk()->assertSee('data-fill-clip="BIDRADAR:', false);
     }
 
     public function test_an_edited_proposal_is_the_one_filled(): void

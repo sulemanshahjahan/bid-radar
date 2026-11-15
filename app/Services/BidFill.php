@@ -32,6 +32,8 @@ class BidFill
             'd' => $draft->delivery_days !== null ? (int) $draft->delivery_days : null,
             'hrs' => is_numeric($hours) ? max(1, (int) $hours) : null,
             't' => $draft->finalText(),
+            // The project's path, so the bookmarklet can refuse to fill a different project's form.
+            'u' => rtrim(preg_replace('#/details$#', '', (string) parse_url((string) $project->url, PHP_URL_PATH)), '/'),
         ];
     }
 
@@ -47,9 +49,21 @@ class BidFill
         if (! str_ends_with($url, '/details')) {
             $url .= '/details'; // the bid form lives here; linking straight to it avoids a redirect that could drop the fragment
         }
+        return $url.'#'.self::FRAGMENT_KEY.'='.self::encoded($project, $draft);
+    }
+
+    /** The payload as base64url JSON: the URL fragment value, and (after "BIDRADAR:") the clipboard copy. */
+    public static function encoded(Project $project, Draft $draft): string
+    {
         $json = json_encode(self::payload($project, $draft), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
-        return $url.'#'.self::FRAGMENT_KEY.'='.rtrim(strtr(base64_encode((string) $json), '+/', '-_'), '=');
+        return rtrim(strtr(base64_encode((string) $json), '+/', '-_'), '=');
+    }
+
+    /** What the Fill bid button copies, so the bookmarklet still works if the fragment was lost. */
+    public static function clipboardText(Project $project): ?string
+    {
+        return $project->latestDraft !== null ? 'BIDRADAR:'.self::encoded($project, $project->latestDraft) : null;
     }
 
     /** The bookmarklet as a javascript: URL, for dragging to the bookmarks bar. */

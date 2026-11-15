@@ -1,11 +1,26 @@
 // BidRadar Fill: fills the Freelancer bid form from the #bidradar=... fragment that BidRadar's
 // "Fill bid" link adds. It never presses Place Bid. Comment lines are stripped from the bookmark.
+function start(code) {
+  var b64 = code.replace(/-/g, '+').replace(/_/g, '/');
+  while (b64.length % 4) b64 += '=';
+  var p;
+  try { p = JSON.parse(decodeURIComponent(escape(atob(b64)))); } catch (e) { alert('BidRadar Fill: the bid data could not be read.'); return; }
+  var slug = function (path) { return (path || '').replace(/\/details\/?$/, '').replace(/\/$/, '').split('/').pop(); };
+  if (p.u && slug(location.pathname) !== slug(p.u)) {
+    alert('BidRadar Fill: the copied bid is for a different project (' + p.u + '). Press Fill bid on this project in BidRadar first.');
+    return;
+  }
+  run(p);
+}
 var m = location.hash.match(/bidradar=([A-Za-z0-9_-]+)/);
-if (!m) { alert('BidRadar Fill: open this project with the "Fill bid" button in BidRadar first.'); return; }
-var b64 = m[1].replace(/-/g, '+').replace(/_/g, '/');
-while (b64.length % 4) b64 += '=';
-var p;
-try { p = JSON.parse(decodeURIComponent(escape(atob(b64)))); } catch (e) { alert('BidRadar Fill: the bid data could not be read.'); return; }
+if (m) { start(m[1]); return; }
+// The fragment can get lost (a redirect, or the page opened another way): the Fill bid button also copied the bid.
+if (!navigator.clipboard || !navigator.clipboard.readText) { alert('BidRadar Fill: open this project with the "Fill bid" button in BidRadar first.'); return; }
+navigator.clipboard.readText().then(function (t) {
+  var c = (t || '').match(/^BIDRADAR:([A-Za-z0-9_-]+)$/);
+  if (c) start(c[1]); else alert('BidRadar Fill: open this project with the "Fill bid" button in BidRadar first.');
+}, function () { alert('BidRadar Fill: allow clipboard access, or open this project with the "Fill bid" button in BidRadar.'); });
+function run(p) {
 // EU (with France's overseas regions), UK, US, Canada, Australia, New Zealand: the owner's sponsor countries.
 var SPONSOR = /(United States|United Kingdom|Canada|Australia|New Zealand|Austria|Belgium|Bulgaria|Croatia|Cyprus|Czech|Denmark|Estonia|Finland|France|Germany|Greece|Hungary|Ireland|Italy|Latvia|Lithuania|Luxembourg|Malta|Netherlands|Poland|Portugal|Romania|Slovakia|Slovenia|Spain|Sweden|Reunion|Réunion|Guadeloupe|Martinique|French Guiana|Mayotte)/;
 var MAX_SPONSOR_USD = 6;
@@ -65,3 +80,4 @@ var tries = 0;
   if (btn) { btn.scrollIntoView({ block: 'center' }); btn.style.outline = '4px solid #f59e0b'; }
   banner('BidRadar filled: ' + p.c + ' ' + p.a + (p.h ? '/hr' : '') + ', ' + (isHours ? (p.hrs || 10) + ' hours' : (p.d || 7) + ' days') + '. ' + notes.join('; ') + '. Check it, then press ' + (btn ? '"' + btn.innerText.trim() + '"' : 'Place Bid') + '.', true);
 })();
+}

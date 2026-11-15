@@ -66,7 +66,9 @@
 
         <div class="mt-4 flex gap-2">
             @if ($fillUrl = \App\Services\BidFill::link($project))
-                <a href="{{ $fillUrl }}" target="_blank" rel="noopener noreferrer" class="btn-primary flex-1 text-center" title="Opens the bid form; then click the BidRadar Fill bookmark and press Place Bid">Fill bid ↗</a>
+                <a href="{{ $fillUrl }}" target="_blank" rel="noopener noreferrer" class="btn-primary flex-1 text-center" title="Opens the bid form; then click the BidRadar Fill bookmark and press Place Bid"
+                    data-fill-clip="{{ \App\Services\BidFill::clipboardText($project) }}"
+                    onclick="try { navigator.clipboard.writeText(this.dataset.fillClip); } catch (e) {}">Fill bid ↗</a>
             @endif
             @if ($project->url)
                 <a href="{{ $project->url }}" target="_blank" rel="noopener noreferrer" class="btn flex-1">Open on Freelancer ↗</a>
