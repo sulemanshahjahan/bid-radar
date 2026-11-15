@@ -56,6 +56,10 @@ class ScoreAdjuster
             array_push($adjustments, ...$this->rankRebuild($scoring, $details, $text, $base));
         }
 
+        if ($this->settings->get('skill_rank_scoring')) {
+            array_push($adjustments, ...$this->skillRanks((array) ($details['skills'] ?? [])));
+        }
+
         $score = max(0, min(100, $base + array_sum(array_column($adjustments, 'points'))));
 
         return ['base' => $base, 'adjustments' => $adjustments, 'score' => $score];
@@ -106,6 +110,60 @@ class ScoreAdjuster
             'fit_score' => $result['score'],
             'scoring' => array_merge($project->scoring, ['adjustments' => $result['adjustments']]),
         ])->save();
+    }
+
+    /** A project skill ranked at or above this "top %" counts as a strong skill. */
+    public const STRONG_SKILL_TOP = 10;
+
+    /** A project with no skill ranked at or above this "top %" gets the weak-skills penalty. */
+    public const WEAK_SKILL_TOP = 25;
+
+    /**
+     * Freelancer ranks bids partly on the bidder's record in the skills the project is tagged with,
+     * so the owner's per-skill rankings ("Skill | top %", Settings > skill_rankings) predict where a bid
+     * will land: top 1-10% skills rank in the top third, untagged or unranked skills near the bottom.
+     * Matching is by exact skill name (case-insensitive), as Freelancer tags them; "| 100" means no history.
+     *
+     * @param  list<string>  $projectSkills
+     * @return list<array{label: string, points: int}>
+     */
+    public function skillRanks(array $projectSkills): array
+    {
+        $projectSkills = array_values(array_filter(array_map(fn ($s) => trim((string) $s), $projectSkills), 'strlen'));
+        if ($projectSkills === []) {
+            return [];
+        }
+
+        $rank = [];
+        foreach (\App\Services\Opportunity\ProfileEvidence::parseRankings($this->settings->list('skill_rankings')) as $r) {
+            $rank[mb_strtolower($r['skill'])] = $r['top'];
+        }
+        if ($rank === []) {
+            return [];
+        }
+
+        $matched = [];
+        foreach ($projectSkills as $skill) {
+            $top = $rank[mb_strtolower($skill)] ?? null;
+            if ($top !== null && $top < 100) {
+                $matched[$skill] = $top;
+            }
+        }
+        asort($matched);
+        $strong = array_filter($matched, fn ($top) => $top <= self::STRONG_SKILL_TOP);
+        $fmt = fn (array $skills) => implode(', ', array_map(fn ($s, $t) => $s.' top '.rtrim(rtrim(number_format($t, 1), '0'), '.').'%', array_keys($skills), $skills));
+
+        if (count($strong) >= 2) {
+            return [['label' => 'strong skill ranks ('.$fmt(array_slice($strong, 0, 3, true)).')', 'points' => 10]];
+        }
+        if (count($strong) === 1) {
+            return [['label' => 'strong skill rank ('.$fmt($strong).')', 'points' => 5]];
+        }
+        if (array_filter($matched, fn ($top) => $top <= self::WEAK_SKILL_TOP) === []) {
+            return [['label' => 'no project skill ranked in my top '.self::WEAK_SKILL_TOP.'% (bid likely ranks low)', 'points' => -10]];
+        }
+
+        return [];
     }
 
     /**

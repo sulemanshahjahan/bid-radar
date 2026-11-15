@@ -192,6 +192,12 @@
                     <span class="block text-xs text-slate-500">+10 quick fixes (1-2 days), +10 clients rated 4.8+ with 3+ projects, -15 unverified payment, -20 price shoppers or budget under minimum, -20 large or off-niche work (only when the base score is 40+). Bid-count penalties are smaller when the client's minimum budget is $250+ ($25+/hr).</span>
                 </span>
             </label>
+            <label class="flex items-start gap-2 text-sm">
+                <input type="checkbox" wire:model="form.skill_rank_scoring" class="mt-0.5 rounded border-slate-300 text-teal-600">
+                <span>Score by my skill rankings
+                    <span class="block text-xs text-slate-500">Uses the "Skill | top %" list above. +10 when two or more of the project's skills are in my top 10%, +5 for one, -10 when none of its skills is in my top 25% (Freelancer ranks those bids low). "| 100" means no history in that skill.</span>
+                </span>
+            </label>
             <label class="flex items-center gap-2 text-sm {{ $pollingAllowed ? '' : 'text-slate-400' }}">
                 <input type="checkbox" wire:model="form.polling_enabled" class="rounded border-slate-300 text-teal-600" @disabled(! $pollingAllowed)>
                 Poll Freelancer for new projects

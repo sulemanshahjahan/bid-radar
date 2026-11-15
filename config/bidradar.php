@@ -114,6 +114,7 @@ return [
         'quiet_alerts' => false,
         'push_min_score' => 1, // browser push for live projects scored at or above this (owner decision 2026-11-07: score > 0)
         'rank_rebuild' => false, // extra score adjustments to rebuild ranking with quick wins
+        'skill_rank_scoring' => true, // +10/+5 for projects tagged with my top-10% skills, -10 when none of its skills is in my top 25% (ScoreAdjuster::skillRanks)
 
         // Models
         'scoring_model' => 'claude-haiku-5-5',
@@ -167,13 +168,23 @@ return [
         // rankings, "Skill | top %". Not verified against the live profile; update them from the profile and
         // set the date they were read. Undated or old rankings count as weaker evidence.
         'skill_rankings' => [
-            'Newsletters | 2', 'CSS3 | 3', 'Templates | 5', 'Blog Design | 5', 'HTML5 | 6',
-            'Payment Gateway Integration | 6', 'Plugin | 6', 'LESS/Sass/SCSS | 6', 'Website Testing | 9',
-            'Shopping Cart Integration | 11', 'jQuery / Prototype | 11', 'CMS | 12', 'CSS | 13', 'WordPress | 14',
-            'Web Development | 15', 'Website Management | 16', 'JavaScript | 17', 'Frontend Development | 19',
-            'HTML | 23', 'Shopify Templates | 24', 'Shopify | 25',
+            'Newsletters | 1', 'Umbraco | 1', 'HTML5 | 2', 'Templates | 2', 'Blog Design | 3', 'Google Webmaster Tools | 3',
+            'LESS/Sass/SCSS | 3', 'CSS3 | 4', 'Plugin | 4', 'API | 5', 'JavaScript | 5', 'Odd Jobs | 5',
+            'Payment Gateway Integration | 5', 'PSD to HTML | 5', 'Web Services | 5', 'Blog Install | 6', 'Coding | 6',
+            'Design | 6', 'Mailchimp | 6', 'Bootstrap | 7', 'CSS | 7', 'Email Handling | 7', 'Google Chrome | 7',
+            'jQuery / Prototype | 7', 'Magento | 7', 'Programming | 7', 'Drupal | 8', 'Frontend Development | 8',
+            'Shopping Cart Integration | 8', 'Website Testing | 8', 'Format and Layout | 9', 'Web Development | 9',
+            'Web Security | 9', 'WordPress | 9', 'Blog | 10', 'CMS | 10', 'Database Development | 10', 'Blog Writing | 11',
+            'MySQL | 12', 'eBay | 13', 'Website Management | 14', 'PHP | 15', 'Email Marketing | 17', 'Java | 18',
+            'Word | 18', 'Software Architecture | 19', 'PDF | 20', 'HTML | 21', 'Icon Design | 21', 'UX / User Experience | 21',
+            'WooCommerce | 22', 'eCommerce | 23', 'Shopify Templates | 23', 'Banner Design | 24', 'Shopify | 24',
+            'Web Hosting | 24', 'SEO | 25', 'Website Design | 25', 'Article Writing | 26', 'Content Writing | 26',
+            'Mobile App Development | 26', 'Python | 29', 'User Interface / IA | 30', 'Data Entry | 33', 'Android | 34',
+            'Photoshop Design | 34', 'Graphic Design | 44', 'Logo Design | 46', 'Photoshop | 47',
+            'API Integration | 100', 'Cloudflare | 100', 'Elementor | 100', 'Page Speed Optimization | 100',
+            'Web Application | 100', 'Web Design | 100', 'Website Optimization | 100', 'WordPress Security | 100',
         ],
-        'skill_rankings_as_of' => '', // Y-m-d the rankings were read from the profile; empty = unknown
+        'skill_rankings_as_of' => '2026-11-15', // Y-m-d the rankings were read from the profile; empty = unknown
     ],
 
     /*

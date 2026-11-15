@@ -38,7 +38,7 @@ class SettingsPage extends Component
     /** A newly created alert feed token, shown once. Only its hash is stored. */
     public ?string $feedToken = null;
 
-    private const BOOLEANS = ['quiet_alerts', 'polling_enabled', 'paused', 'rank_rebuild'];
+    private const BOOLEANS = ['quiet_alerts', 'polling_enabled', 'paused', 'rank_rebuild', 'skill_rank_scoring'];
 
     private const TEXTS = [
         'scoring_model', 'scoring_effort', 'drafting_model', 'drafting_effort', 'alert_drafting_effort',
