@@ -90,6 +90,35 @@ class FastDraftTest extends TestCase
         $this->assertNull($draft->check_failures);
     }
 
+    public function test_a_fast_draft_uses_the_short_schema_and_the_alert_model(): void
+    {
+        $project = $this->makeProject([], [], $this->scoringReply());
+        $this->claude->reply($this->draftReply(), 'claude-haiku-5-5');
+
+        $draft = app(Drafter::class)->draft($project, fast: true);
+
+        $request = $this->claude->requests[0];
+        $this->assertSame('claude-haiku-5-5', $request->model);
+        $this->assertArrayNotHasKey('self_review', $request->schema['properties']);
+        $this->assertArrayNotHasKey('questions_to_ask_later', $request->schema['properties']);
+        $this->assertArrayNotHasKey('hook_candidates', $request->schema['properties']['plan']['properties']);
+        $this->assertStringStartsWith('FAST DRAFT', $request->userContent);
+        $this->assertNotSame('', trim($draft->proposal_text));
+    }
+
+    public function test_a_tapped_draft_keeps_the_full_schema_and_the_drafting_model(): void
+    {
+        $project = $this->makeProject([], [], $this->scoringReply());
+        $this->claude->reply($this->draftReply(), 'claude-sonnet-5-5');
+
+        app(Drafter::class)->draft($project);
+
+        $request = $this->claude->requests[0];
+        $this->assertSame('claude-sonnet-5-5', $request->model);
+        $this->assertArrayHasKey('self_review', $request->schema['properties']);
+        $this->assertStringStartsNotWith('FAST DRAFT', $request->userContent);
+    }
+
     public function test_a_tapped_draft_keeps_the_quality_revision_and_the_drafting_effort(): void
     {
         $weak = array_fill_keys(array_keys(ProposalQuality::CRITERIA), 3);

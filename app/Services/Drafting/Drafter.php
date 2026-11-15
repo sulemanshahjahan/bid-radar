@@ -195,10 +195,12 @@ class Drafter
         $request = new ClaudeRequest(
             model: $model,
             system: $system,
-            userContent: $content,
-            schema: self::schema(),
+            userContent: $fast ? self::FAST_NOTE."
+
+".$content : $content,
+            schema: $fast ? self::fastSchema() : self::schema(),
             effort: $effort,
-            maxTokens: 8000,
+            maxTokens: $fast ? 3000 : 8000,
             fallbacks: (bool) config('bidradar.claude.drafting_fallbacks') && str_starts_with($model, 'claude-sonnet'),
         );
 
@@ -310,6 +312,30 @@ class Drafter
             fn ($v) => is_scalar($v) ? trim((string) $v) : '',
             is_array($value) ? $value : [],
         ), 'strlen'));
+    }
+
+    /** Tells the model the fast schema leaves out the long planning and review steps. */
+    public const FAST_NOTE = 'FAST DRAFT (bid within seconds): this reply uses a short schema. Plan only the primary problem, the explicit instructions and the opening type; do not write hook candidates, a self-review or later questions. Choose the strongest opening yourself and write proposal_text directly. Every writing rule still applies.';
+
+    /**
+     * The automatic (fast) draft's reply: the same proposal, bid fields and milestones, with a short plan and
+     * no hook candidates, self-review or later questions. Output length is most of a draft's latency, and those
+     * parts are often longer than the proposal itself.
+     *
+     * @return array<string, mixed>
+     */
+    public static function fastSchema(): array
+    {
+        $full = self::schema();
+        $plan = $full['properties']['plan'];
+        $keep = ['primary_problem', 'instructions', 'hook_type', 'closing'];
+        $plan['properties'] = array_intersect_key($plan['properties'], array_flip($keep));
+        $plan['required'] = $keep;
+        $full['properties']['plan'] = $plan;
+        unset($full['properties']['self_review'], $full['properties']['questions_to_ask_later']);
+        $full['required'] = array_values(array_diff($full['required'], ['self_review', 'questions_to_ask_later']));
+
+        return $full;
     }
 
     /** @return array<string, mixed> */

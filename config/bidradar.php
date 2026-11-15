@@ -121,7 +121,7 @@ return [
         'scoring_effort' => 'low',
         'drafting_model' => 'claude-sonnet-5-5',
         'drafting_effort' => 'medium', // Draft / Regenerate tapped in the app
-        'alert_drafting_model' => 'claude-sonnet-5-5', // automatic drafts; claude-haiku-5-5 is faster
+        'alert_drafting_model' => 'claude-haiku-5-5', // automatic drafts (owner 2026-11-16: fastest possible); Settings can switch back to Sonnet
         'alert_drafting_effort' => 'low', // automatic drafts after scoring: one pass, ready to bid within minutes
 
         // Cost and volume
