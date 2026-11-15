@@ -122,6 +122,17 @@
                     <select wire:model="form.alert_drafting_effort" class="field">@foreach (['low', 'medium', 'high'] as $e)<option>{{ $e }}</option>@endforeach</select>
                     <span class="text-xs text-slate-500">Drafts made right after scoring: one pass, no quality revision, so they are ready to bid on within minutes.</span>
                 </label>
+                <label class="block">
+                    <span class="label">Automatic draft model</span>
+                    <select wire:model="form.alert_drafting_model" class="field">@foreach ($models as $m)<option value="{{ $m }}">{{ $m }}</option>@endforeach</select>
+                    <span class="text-xs text-slate-500">Model for the draft written right after scoring. A Haiku model is several times faster, for bidding within seconds.</span>
+                </label>
+                <label class="block">
+                    <span class="label">Pricing</span>
+                    <select wire:model="form.pricing_mode" class="field"><option value="range_minimum">Bottom of the range (my rule)</option><option value="average">Near the average bid</option></select>
+                    <span class="text-xs text-slate-500">Bottom of the range: 250-750 bids 250, 750-1500 bids 750, budgets up to $250 bid $50-150 ($40 for a quick fix of 3 hours or less), hourly at the range minimum.</span>
+                </label>
+                <label class="block"><span class="label">Hourly floor ($/hr)</span><input type="number" step="any" wire:model="form.min_hourly_usd" class="field"> @error('form.min_hourly_usd') <span class="text-xs text-red-600">{{ $message }}</span> @enderror</label>
                 <label class="block"><span class="label">Daily AI spend cap ($)</span><input type="number" step="0.01" wire:model="form.daily_spend_cap_usd" class="field"> @error('form.daily_spend_cap_usd') <span class="text-xs text-red-600">{{ $message }}</span> @enderror</label>
                 <label class="block"><span class="label">Weekly bid cap</span><input type="number" wire:model="form.weekly_bid_cap" class="field"> @error('form.weekly_bid_cap') <span class="text-xs text-red-600">{{ $message }}</span> @enderror</label>
                 <label class="block"><span class="label">"Worth sponsoring" min budget ($)</span><input type="number" step="any" wire:model="form.sponsor_min_budget_usd" class="field"> @error('form.sponsor_min_budget_usd') <span class="text-xs text-red-600">{{ $message }}</span> @enderror</label>
@@ -165,6 +176,9 @@
             <p class="text-xs text-slate-600" x-show="status" x-text="status" x-cloak></p>
 
             <div class="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 space-y-2">
+                <p><span class="font-medium">One-click bidding</span>: drag this button to your bookmarks bar:
+                    <a href="{{ \App\Services\BidFill::bookmarklet() }}" class="btn ml-1 inline-block" onclick="event.preventDefault(); alert('Drag this button to your bookmarks bar.');">BidRadar Fill</a>.
+                    On a project, press <span class="font-medium">Fill bid</span>, then click the bookmark: it fills the price, days, proposal and the free highlight, ticks Sponsored for eligible clients, and highlights Place Bid. You press Place Bid yourself.</p>
                 <p><span class="font-medium">Alert feed token</span>: {{ $feedTokenSet ? 'set' : 'not set' }}. Lets your bidding assistant read the pushed projects at <code>/alerts/feed</code> (read-only).</p>
                 @if ($feedToken)
                     <p class="break-all rounded bg-amber-50 px-2 py-1 font-mono text-amber-900" data-feed-token>{{ $feedToken }}</p>

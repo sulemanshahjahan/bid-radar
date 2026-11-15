@@ -22,6 +22,10 @@ abstract class TestCase extends BaseTestCase
 
         // ...and never reach Freelancer or Telegram either. Each test fakes what it needs.
         Http::preventStrayRequests();
+
+        // The pricing tests written before the owner's range-minimum rule keep testing the average-bid
+        // pricing; RangeMinimumPricingTest switches the mode on explicitly.
+        config(['bidradar.defaults.pricing_mode' => 'average']);
     }
 
     /** @param array<string, mixed> $overrides */

@@ -222,6 +222,9 @@ class Telegram
     public static function alertButtons(Project $project): array
     {
         $buttons = [['text' => 'Open draft', 'url' => route('projects.show', $project)]];
+        if ($fill = \App\Services\BidFill::link($project)) {
+            $buttons[] = ['text' => 'Fill bid', 'url' => $fill];
+        }
         if ($project->url) {
             $buttons[] = ['text' => 'Open on Freelancer', 'url' => $project->url];
         }

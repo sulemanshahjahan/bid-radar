@@ -22,6 +22,9 @@ class Poller
 {
     public const LAST_POLL = 'freelancer:last_poll_at';
 
+    /** Shortest poll interval allowed in Settings. The scheduler ticks every 10 seconds; the interval decides. */
+    public const MIN_INTERVAL = 10;
+
     public const LAST_SUCCESS = 'freelancer:last_success_at';
 
     public const LAST_BID_REFRESH = 'freelancer:last_bid_refresh_at';
@@ -59,9 +62,10 @@ class Poller
             return ['status' => 'backoff', 'message' => 'Backing off until '.date('H:i:s', $until).'.'];
         }
 
-        $interval = max(30, $this->settings->int('poll_interval_seconds'));
+        $interval = max(self::MIN_INTERVAL, $this->settings->int('poll_interval_seconds'));
         $last = (int) Cache::get(self::LAST_POLL, 0);
-        if ($scheduled && now()->getTimestamp() - $last < $interval - 10) {
+        // The scheduler ticks every 10 seconds; 3 seconds of slack absorbs tick jitter.
+        if ($scheduled && now()->getTimestamp() - $last < $interval - 3) {
             return ['status' => 'waiting', 'message' => 'Next poll not due yet.'];
         }
         if (! $dryRun) {

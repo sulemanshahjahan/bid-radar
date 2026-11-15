@@ -34,6 +34,10 @@ class PricingCalculator
         $bidAvg = (float) ($details['bid_avg'] ?? 0);
         $hourly = ($details['type'] ?? 'fixed') === 'hourly';
 
+        if ($this->settings->get('pricing_mode', 'average') === 'range_minimum') {
+            return $this->rangeMinimum($currency, $rate, $min, $max, $hourly, $estimatedHours);
+        }
+
         if ($hourly) {
             $myRate = $this->settings->float('hourly_rate_usd') / $rate;
             $amount = max($myRate, $min);
@@ -85,6 +89,50 @@ class PricingCalculator
         $result['reason'] .= $this->takeHome($result['amount'], $currency, $estimatedHours);
 
         return $result + $this->profitability($result['amount'], $currency, $rate, $max, $estimatedHours);
+    }
+
+    /** A fixed budget whose top is at or under this (USD) is a "small" project: bid 50-150, or 30-50 for a quick fix. */
+    public const SMALL_BUDGET_MAX_USD = 250;
+
+    /** Estimated hours at or under this make a small project a quick fix. */
+    public const QUICK_FIX_HOURS = 3;
+
+    /**
+     * The owner's bidding rule (pricing_mode = range_minimum): never the highest, bid the bottom of the range.
+     * - fixed, budget top up to $250: a quick fix (3 hours or less) bids $40, otherwise $50 + $4 per estimated
+     *   hour, rounded to $10, between $50 and $150; always inside the client's range.
+     * - any other fixed range: the range minimum (250-750 bids 250, 750-1500 bids 750).
+     * - hourly: the range minimum, raised to the min_hourly_usd floor.
+     *
+     * @return array{amount: float, currency: string, is_hourly: bool, minimum: float, reason: string, warning: string|null}
+     */
+    private function rangeMinimum(string $currency, float $rate, float $min, float $max, bool $hourly, ?int $hours): array
+    {
+        if ($hourly) {
+            $floor = $this->settings->float('min_hourly_usd') / $rate;
+            $amount = max($min, $floor);
+
+            return $this->result($amount, $currency, true, $amount,
+                $amount > $min ? 'Raised to my hourly floor' : 'Bottom of the client\'s hourly range');
+        }
+
+        $topUsd = ($max ?: $min) * $rate;
+        if ($topUsd > 0 && $topUsd <= self::SMALL_BUDGET_MAX_USD) {
+            $quick = $hours !== null && $hours <= self::QUICK_FIX_HOURS;
+            $usd = $quick ? 40 : max(50, min(150, round((50 + 4 * (int) $hours) / 10) * 10));
+            $amount = $usd / $rate;
+            if ($max > 0) {
+                $amount = min($amount, $max);
+            }
+            $amount = max($amount, $min);
+
+            return $this->result($amount, $currency, false, $min,
+                $quick ? 'Quick fix on a small budget: low bid to win and earn a review' : 'Small budget: $50-150 by estimated hours');
+        }
+
+        $amount = $min > 0 ? $min : $max;
+
+        return $this->result($amount, $currency, false, $min, 'Bottom of the client\'s budget range');
     }
 
     /**

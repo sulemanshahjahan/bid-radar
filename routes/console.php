@@ -4,7 +4,8 @@ use Illuminate\Support\Facades\Schedule;
 
 // Freelancer poller. Runs every 30 seconds but only polls when the interval in
 // Settings is due, polling is allowed (.env + Settings) and not paused.
-Schedule::command('bidradar:poll')->everyThirtySeconds()->withoutOverlapping(5);
+// Ticks every 10 seconds; Settings > poll interval (30 by default, within Freelancer's written permission) decides when a poll runs.
+Schedule::command('bidradar:poll')->everyTenSeconds()->withoutOverlapping(5);
 
 // Telegram alert if polling is on but no poll has succeeded for 30 minutes.
 Schedule::command('bidradar:watchdog')->everyMinute();

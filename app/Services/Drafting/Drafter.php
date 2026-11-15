@@ -132,7 +132,7 @@ class Drafter
             }
 
             try {
-                $candidate = $this->ask($project, $system, $content, $price, $days, $effort);
+                $candidate = $this->ask($project, $system, $content, $price, $days, $effort, $fast);
             } catch (InvalidReplyException $e) {
                 if ($attempts === 2 && $draft === null) {
                     throw $e;
@@ -187,9 +187,11 @@ class Drafter
      * @param  array{amount: float, currency: string, is_hourly: bool, minimum: float, reason: string, warning: string|null}  $price
      * @return array<string, mixed>
      */
-    private function ask(Project $project, array $system, string $content, array $price, ?int $days, string $effort): array
+    private function ask(Project $project, array $system, string $content, array $price, ?int $days, string $effort, bool $fast = false): array
     {
-        $model = $this->settings->get('drafting_model');
+        $model = $fast
+            ? (string) ($this->settings->get('alert_drafting_model') ?: $this->settings->get('drafting_model'))
+            : (string) $this->settings->get('drafting_model');
         $request = new ClaudeRequest(
             model: $model,
             system: $system,

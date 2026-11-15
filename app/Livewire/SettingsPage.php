@@ -29,7 +29,7 @@ class SettingsPage extends Component
         'threshold_high', 'threshold_medium', 'daily_spend_cap_usd', 'weekly_bid_cap',
         'hourly_rate_usd', 'floor_price_usd', 'avg_bid_factor_low', 'avg_bid_factor_high',
         'word_min', 'word_max', 'poll_interval_seconds', 'sponsor_min_budget_usd',
-        'platform_fee_percent', 'delivery_hours_per_day', 'push_min_score',
+        'platform_fee_percent', 'delivery_hours_per_day', 'push_min_score', 'min_hourly_usd',
     ];
 
     /** Stored in the settings table but never put in the form (keys, device subscriptions, token hash). */
@@ -41,7 +41,7 @@ class SettingsPage extends Component
     private const BOOLEANS = ['quiet_alerts', 'polling_enabled', 'paused', 'rank_rebuild', 'skill_rank_scoring'];
 
     private const TEXTS = [
-        'scoring_model', 'scoring_effort', 'drafting_model', 'drafting_effort', 'alert_drafting_effort',
+        'scoring_model', 'scoring_effort', 'drafting_model', 'drafting_effort', 'alert_drafting_effort', 'alert_drafting_model', 'pricing_mode',
         'positioning', 'stats_rating', 'stats_reviews', 'stats_completion', 'stats_on_time',
         'services_offered', 'services_not_offered', 'turnaround_notes', 'style_notes', 'portfolio_notes',
         'availability_notes', 'skill_rankings_as_of',
@@ -105,7 +105,7 @@ class SettingsPage extends Component
             'form.max_bid_count' => 'required|integer|min:1',
             'form.new_build_max_bid_count' => 'required|integer|min:1',
             'form.max_age_hours' => 'required|integer|min:1|max:24',
-            'form.poll_interval_seconds' => 'required|integer|min:30|max:3600',
+            'form.poll_interval_seconds' => 'required|integer|min:'.\App\Services\Freelancer\Poller::MIN_INTERVAL.'|max:3600',
             'form.threshold_high' => 'required|integer|between:1,100|gt:form.threshold_medium',
             'form.threshold_medium' => 'required|integer|between:0,99',
             'form.push_min_score' => 'required|integer|between:1,100',
@@ -125,6 +125,9 @@ class SettingsPage extends Component
             'form.scoring_effort' => 'required|'.$efforts,
             'form.drafting_effort' => 'required|'.$efforts,
             'form.alert_drafting_effort' => 'required|'.$efforts,
+            'form.alert_drafting_model' => 'required|string|in:'.implode(',', array_keys(config('bidradar.prices'))),
+            'form.pricing_mode' => 'required|in:range_minimum,average',
+            'form.min_hourly_usd' => 'required|numeric|min:0',
             'form.positioning' => 'nullable|string|max:3000',
             'form.services_offered' => 'nullable|string|max:3000',
             'form.services_not_offered' => 'nullable|string|max:3000',

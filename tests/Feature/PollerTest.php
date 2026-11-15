@@ -164,21 +164,34 @@ class PollerTest extends TestCase
         $this->assertSame(2, $refreshes(), 'Bid stats at 0 and 135 seconds only');
     }
 
-    public function test_the_scheduler_runs_the_poller_every_30_seconds(): void
+    public function test_the_scheduler_ticks_every_10_seconds_and_the_interval_setting_decides(): void
     {
         $event = collect(app(Schedule::class)->events())
             ->first(fn ($e) => str_contains($e->command, 'bidradar:poll'));
 
         $this->assertTrue($event->isRepeatable());
-        $this->assertSame(30, $event->repeatSeconds);
+        $this->assertSame(10, $event->repeatSeconds);
     }
 
-    public function test_settings_refuse_an_interval_under_30_seconds(): void
+    public function test_a_10_second_interval_polls_on_every_tick(): void
+    {
+        app(Settings::class)->set(['poll_interval_seconds' => 10]);
+        $this->fakeApi();
+        Http::fake(['www.freelancer.com/api/projects/0.1/projects/?*' => Http::response(['status' => 'success', 'result' => ['projects' => []]])]);
+
+        $this->assertSame('ok', app(Poller::class)->poll()['status']);
+        foreach (range(1, 3) as $i) {
+            Carbon::setTestNow(now()->addSeconds(10));
+            $this->assertSame('ok', app(Poller::class)->poll()['status']);
+        }
+    }
+
+    public function test_settings_refuse_an_interval_under_10_seconds(): void
     {
         $this->actingAs(User::factory()->create());
 
         Livewire::test(SettingsPage::class)
-            ->set('form.poll_interval_seconds', 10)->call('save')
+            ->set('form.poll_interval_seconds', 5)->call('save')
             ->assertHasErrors('form.poll_interval_seconds');
     }
 

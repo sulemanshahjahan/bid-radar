@@ -121,6 +121,7 @@ return [
         'scoring_effort' => 'low',
         'drafting_model' => 'claude-sonnet-5-5',
         'drafting_effort' => 'medium', // Draft / Regenerate tapped in the app
+        'alert_drafting_model' => 'claude-sonnet-5-5', // automatic drafts; claude-haiku-5-5 is faster
         'alert_drafting_effort' => 'low', // automatic drafts after scoring: one pass, ready to bid within minutes
 
         // Cost and volume
@@ -134,6 +135,10 @@ return [
         // Pricing
         'hourly_rate_usd' => 25,
         'floor_price_usd' => 25,
+        // range_minimum: the owner's rule (2026-11-14/15): bottom of the range, $50-150 on small budgets, $40 quick fixes,
+        // hourly at the range minimum with a min_hourly_usd floor. average: the older average-bid pricing.
+        'pricing_mode' => 'range_minimum',
+        'min_hourly_usd' => 12,
         'avg_bid_factor_low' => 0.90,
         'avg_bid_factor_high' => 1.00,
         'platform_fee_percent' => 10, // Freelancer's fee on fixed-price work; only used to show take-home pay
