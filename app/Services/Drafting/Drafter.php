@@ -46,8 +46,9 @@ class Drafter
     {
         $hours = $project->score('estimated_hours');
         $hours = is_numeric($hours) ? (int) $hours : null;
-        $price = $this->pricing->price($project->details ?? [], $hours);
         $category = (string) ($project->category ?? 'other');
+        $price = $this->pricing->price($project->details ?? [], $hours, $category);
+        $quick = $this->settings->get('pricing_mode', 'average') === 'range_minimum' && PricingCalculator::isQuick($category);
         $categoryName = config('bidradar.categories.'.$category, $category);
         $dependencies = (array) $project->score('dependencies', []);
         $scopeMode = self::scopeMode($price, $project->title."\n".$project->description);
@@ -58,6 +59,12 @@ class Drafter
             $this->settings->float('delivery_hours_per_day') ?: 6.0,
         );
         $days = $delivery['days'] ?? null;
+        if ($quick) {
+            // Owner: on fixes never quote "2 days" or "11 days"; the bid field takes the shortest delivery and the
+            // text says the work starts now and is fixed as soon as possible.
+            $days = 1;
+            $delivery = null;
+        }
 
         $warnings = array_values(array_filter([
             $price['warning'],
@@ -85,6 +92,7 @@ class Drafter
             'client_word_limit' => $length['client_limit'],
             'phrase_opens' => $phraseOpens,
             'deliverables' => (array) $project->score('deliverables', []),
+            'quick' => $quick,
         ];
 
         $system = [
@@ -103,6 +111,7 @@ class Drafter
             'delivery' => $delivery,
             'urgent' => ClientInstructions::urgent($clientText),
             'scope_mode' => $scopeMode,
+            'quick' => $quick,
         ]);
         $failures = [];
         $draft = null;
@@ -658,9 +667,12 @@ class Drafter
                 $price['currency'],
                 $price['is_hourly'] ? ' (this is an hourly rate)' : '',
             ),
-            $days !== null
-                ? "Delivery time: {$days} ".($days === 1 ? 'day' : 'days').'.'.self::deliveryBasis($job['hours'], $job['delivery'])
-                : 'There is no delivery time: do not mention a timeline or a number of days.',
+            ! empty($job['quick'])
+                ? 'Timing: this is a quick fix. Do NOT state a number of days, hours or a delivery date anywhere. Say plainly, in the '
+                    .'opening two or three sentences, that you can start now and fix it as soon as possible.'
+                : ($days !== null
+                    ? "Delivery time: {$days} ".($days === 1 ? 'day' : 'days').'.'.self::deliveryBasis($job['hours'], $job['delivery'])
+                    : 'There is no delivery time: do not mention a timeline or a number of days.'),
             sprintf(
                 'Job size: %s. Word target: %d-%d words (the check fails outside %d-%d)%s.',
                 $length['size'], $length['target_min'], $length['target_max'], $length['min'], $length['max'],
@@ -668,7 +680,7 @@ class Drafter
             ),
         ];
 
-        if ($days !== null && $days <= 2 && ($job['urgent'] || in_array($length['size'], ['quick', 'small'], true))) {
+        if (empty($job['quick']) && $days !== null && $days <= 2 && ($job['urgent'] || in_array($length['size'], ['quick', 'small'], true))) {
             $parts[] = "Delivery advantage: {$days} ".($days === 1 ? 'day' : 'days').($job['urgent'] ? ' for a client in a hurry' : ' for a small job')
                 .' is a real selling point. Put it in the opening two or three sentences, stated plainly.';
         }

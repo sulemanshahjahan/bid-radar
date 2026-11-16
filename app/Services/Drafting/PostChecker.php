@@ -67,10 +67,14 @@ class PostChecker
         if ($phrase = self::unsupportedClaim($text)) {
             $failures[] = "Makes a general claim or statistic with no source (\"{$phrase}\").";
         }
-        if ($factBankText !== null && ($phrase = self::unverifiedAvailability($text, $factBankText))) {
+        $quick = ! empty($rules['quick']);
+        // On quick fixes the owner's own rule is "I can start now and fix it ASAP", so that claim is allowed.
+        if (! $quick && $factBankText !== null && ($phrase = self::unverifiedAvailability($text, $factBankText))) {
             $failures[] = "Claims availability the fact bank does not state (\"{$phrase}\").";
         }
-        if ($phrase = self::conflictingDelivery($text, $draft['delivery_days'] ?? null)) {
+        if ($quick && ($phrase = self::statedDuration($text))) {
+            $failures[] = "Quick fix: do not state a delivery time (\"{$phrase}\"); say you can start now and fix it as soon as possible.";
+        } elseif (! $quick && ($phrase = self::conflictingDelivery($text, $draft['delivery_days'] ?? null))) {
             $failures[] = "Delivery in the text (\"{$phrase}\") differs from the bid's delivery time.";
         }
         foreach (self::integrationTools($briefText) as $tool) {
@@ -407,6 +411,17 @@ class PostChecker
         }
 
         return null;
+    }
+
+    /** Any promised duration ("in 2 days", "within 48 hours", "Delivery is 11 days") — not allowed on quick fixes. */
+    public static function statedDuration(string $text): ?string
+    {
+        // Future promises only, so a past result from the fact bank ("back up within 2 hours") still passes.
+        $n = '(?:\d+|one|two|three|four|five|a few)\s+(?:working\s+|business\s+)?(?:days?|hours?|weeks?)\b';
+        $pattern = '/\b(?:delivery|turnaround|timeline)\b[^.?!]{0,20}?\b'.$n
+            .'|\b(?:I can|I\'ll|I will|will be|you can be|you\'ll be|you will be|it will be|should be)\b[^.?!]{0,40}?\b(?:in|within)\s+'.$n.'/iu';
+
+        return preg_match($pattern, $text, $m) ? $m[0] : null;
     }
 
     /** Words that say nothing about which deliverable is meant ("page", "setup"). */

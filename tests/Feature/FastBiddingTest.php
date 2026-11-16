@@ -49,6 +49,45 @@ class FastBiddingTest extends TestCase
         $this->assertSame(80.0, $this->price(['type' => 'fixed', 'budget_min' => 80, 'budget_max' => 200], 2)['amount']);
     }
 
+    public function test_quick_fixes_bid_the_bottom_of_the_range(): void
+    {
+        app(Settings::class)->set(['pricing_mode' => 'range_minimum', 'min_hourly_usd' => 12]);
+        $calc = app(PricingCalculator::class);
+        $base = ['type' => 'fixed', 'exchange_rate' => 1, 'bid_count' => 30, 'bid_avg' => 100];
+
+        $this->assertSame(10.0, $calc->price($base + ['budget_min' => 10, 'budget_max' => 30], 30, 'fix')['amount']);
+        $this->assertSame(30.0, $calc->price($base + ['currency' => 'EUR', 'budget_min' => 30, 'budget_max' => 250, 'exchange_rate' => 1.1], 6, 'security')['amount']);
+        $this->assertSame(250.0, $calc->price($base + ['budget_min' => 250, 'budget_max' => 750], 8, 'speed')['amount']);
+        // A new build keeps the small-budget rule.
+        $this->assertSame(110.0, $calc->price($base + ['budget_min' => 30, 'budget_max' => 250], 14, 'new_build')['amount']);
+        // Hourly fixes keep the hourly floor.
+        $this->assertSame(12.0, $calc->price(['type' => 'hourly', 'budget_min' => 8, 'budget_max' => 15, 'exchange_rate' => 1], 3, 'fix')['amount']);
+    }
+
+    public function test_a_fix_draft_bids_the_minimum_with_one_day_and_asks_for_start_now_wording(): void
+    {
+        app(Settings::class)->set(['pricing_mode' => 'range_minimum', 'min_hourly_usd' => 12]);
+        $project = $this->makeProject([], [], $this->scoringReply(['category' => 'fix', 'estimated_hours' => 6]));
+        $this->claude->reply($this->draftReply(['bid_amount' => 150, 'delivery_days' => 1]), 'claude-haiku-5-5');
+
+        $draft = app(\App\Services\Drafting\Drafter::class)->draft($project, fast: true);
+
+        $this->assertSame(150, (int) $draft->bid_amount); // makeProject budget is 150-250
+        $this->assertSame(1, (int) $draft->delivery_days);
+        $this->assertStringContainsString('start now and fix it as soon as possible', $this->claude->requests[0]->userContent);
+        $this->assertStringNotContainsString('Delivery time:', $this->claude->requests[0]->userContent);
+    }
+
+    public function test_quick_fix_proposals_promise_no_duration(): void
+    {
+        $checker = app(\App\Services\Drafting\PostChecker::class);
+        $this->assertNotNull($checker::statedDuration('You can be back in your dashboard within 2 days.'));
+        $this->assertNotNull($checker::statedDuration('Delivery is 11 days, once I have access.'));
+        $this->assertNotNull($checker::statedDuration('I will have it fixed in 3 hours.'));
+        $this->assertNull($checker::statedDuration('I can start now and fix it as soon as possible.'));
+        $this->assertNull($checker::statedDuration('A similar form was back up and running within 2 hours.'));
+    }
+
     public function test_a_30_to_250_range_in_a_stronger_currency_is_still_small(): void
     {
         // EUR 30-250 at 1.1 USD per EUR tops out at USD 275, but it is the same small tier: bid $50-150 in EUR.

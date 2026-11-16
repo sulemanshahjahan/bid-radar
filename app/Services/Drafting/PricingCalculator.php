@@ -24,7 +24,18 @@ class PricingCalculator
      * @param  int|null  $estimatedHours  Hours the scoring model estimated for the full scope
      * @return array{amount: float, currency: string, is_hourly: bool, minimum: float, reason: string, warning: string|null, profit_warning?: string|null, covered_hours?: int|null, reduce_scope?: bool}
      */
-    public function price(array $details, ?int $estimatedHours = null): array
+    /**
+     * Fixes and other quick jobs (owner, 2026-11-16): "Bid the minimum", start now, fix ASAP. These categories
+     * bid the bottom of the client's range and promise no multi-day delivery.
+     */
+    public const QUICK_CATEGORIES = ['fix', 'security', 'speed', 'checkout_payment'];
+
+    public static function isQuick(?string $category): bool
+    {
+        return in_array($category, self::QUICK_CATEGORIES, true);
+    }
+
+    public function price(array $details, ?int $estimatedHours = null, ?string $category = null): array
     {
         $currency = strtoupper((string) ($details['currency'] ?? 'USD'));
         $rate = (float) ($details['exchange_rate'] ?? 1) ?: 1.0; // USD per 1 unit of currency
@@ -35,6 +46,12 @@ class PricingCalculator
         $hourly = ($details['type'] ?? 'fixed') === 'hourly';
 
         if ($this->settings->get('pricing_mode', 'average') === 'range_minimum') {
+            if (! $hourly && self::isQuick($category) && ($min > 0 || $max > 0)) {
+                $amount = $min > 0 ? $min : $max;
+
+                return $this->result($amount, $currency, false, $amount, 'Quick fix: the bottom of the client\'s range');
+            }
+
             return $this->rangeMinimum($currency, $rate, $min, $max, $hourly, $estimatedHours);
         }
 
