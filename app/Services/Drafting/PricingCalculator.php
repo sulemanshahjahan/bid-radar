@@ -99,7 +99,7 @@ class PricingCalculator
 
     /**
      * The owner's bidding rule (pricing_mode = range_minimum): never the highest, bid the bottom of the range.
-     * - fixed, budget top up to $250: a quick fix (3 hours or less) bids $40, otherwise $50 + $4 per estimated
+     * - fixed, budget top up to 250 (USD or the client's currency): a quick fix (3 hours or less) bids $40, otherwise $50 + $4 per estimated
      *   hour, rounded to $10, between $50 and $150; always inside the client's range.
      * - any other fixed range: the range minimum (250-750 bids 250, 750-1500 bids 750).
      * - hourly: the range minimum, raised to the min_hourly_usd floor.
@@ -116,8 +116,11 @@ class PricingCalculator
                 $amount > $min ? 'Raised to my hourly floor' : 'Bottom of the client\'s hourly range');
         }
 
-        $topUsd = ($max ?: $min) * $rate;
-        if ($topUsd > 0 && $topUsd <= self::SMALL_BUDGET_MAX_USD) {
+        // Small when the top is 250 or less in USD or in the client's own currency, so EUR/GBP 30-250
+        // (about $275-320) is still a small job and doesn't fall through to a EUR 30 range-minimum bid.
+        $top = $max ?: $min;
+        $topUsd = $top * $rate;
+        if ($top > 0 && min($top, $topUsd) <= self::SMALL_BUDGET_MAX_USD) {
             $quick = $hours !== null && $hours <= self::QUICK_FIX_HOURS;
             $usd = $quick ? 40 : max(50, min(150, round((50 + 4 * (int) $hours) / 10) * 10));
             $amount = $usd / $rate;

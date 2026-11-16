@@ -49,11 +49,23 @@ class FastBiddingTest extends TestCase
         $this->assertSame(80.0, $this->price(['type' => 'fixed', 'budget_min' => 80, 'budget_max' => 200], 2)['amount']);
     }
 
-    public function test_other_currencies_use_the_usd_size_of_the_budget(): void
+    public function test_a_30_to_250_range_in_a_stronger_currency_is_still_small(): void
     {
-        // EUR 30-250 at 1.1 USD per EUR tops out at USD 275: not "small", so it bids the range minimum.
-        $result = $this->price(['type' => 'fixed', 'currency' => 'EUR', 'budget_min' => 30, 'budget_max' => 250, 'exchange_rate' => 1.1], 4);
-        $this->assertSame(30.0, $result['amount']);
+        // EUR 30-250 at 1.1 USD per EUR tops out at USD 275, but it is the same small tier: bid $50-150 in EUR.
+        $result = $this->price(['type' => 'fixed', 'currency' => 'EUR', 'budget_min' => 30, 'budget_max' => 250, 'exchange_rate' => 1.1], 120);
+        $this->assertEqualsWithDelta(150 / 1.1, $result['amount'], 1);
+        $this->assertSame('EUR', $result['currency']);
+
+        $quick = $this->price(['type' => 'fixed', 'currency' => 'GBP', 'budget_min' => 20, 'budget_max' => 250, 'exchange_rate' => 1.3], 2);
+        $this->assertEqualsWithDelta(40 / 1.3, $quick['amount'], 1);
+    }
+
+    public function test_weaker_currencies_still_use_the_usd_size_of_the_budget(): void
+    {
+        // AUD 250-750 at 0.65 tops out at about $490: not small, so it bids the range minimum.
+        $this->assertSame(250.0, $this->price(['type' => 'fixed', 'currency' => 'AUD', 'budget_min' => 250, 'budget_max' => 750, 'exchange_rate' => 0.65], 40)['amount']);
+        // AUD 30-250 at 0.65 tops out at about $160: small.
+        $this->assertEqualsWithDelta(150 / 0.65, $this->price(['type' => 'fixed', 'currency' => 'AUD', 'budget_min' => 30, 'budget_max' => 250, 'exchange_rate' => 0.65], 40)['amount'], 1);
     }
 
     public function test_hourly_bids_the_range_minimum_with_the_floor(): void
