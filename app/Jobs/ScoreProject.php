@@ -94,8 +94,17 @@ class ScoreProject implements ShouldQueue
             // High fit held back only by unverified payment: still alert me (without a draft) so I can decide.
             $paymentAlert = $live && $high && $gate->onlyPaymentBlocks($project) && ! $paused;
             $this->recordDecision($project, $result, $adjusted, $settings, 'held', $blockers);
+            // The owner bids on unverified clients too: a fast draft (seconds, a fraction of a cent) so the bid
+            // can go out at once. The alert still carries the payment warning.
+            $draftAnyway = $live && $medium && $gate->onlyPaymentBlocks($project) && ! $paused
+                && $settings->get('draft_unverified_payment') && ! $costs->capReached();
             if ($paymentAlert) {
-                $telegram->projectAlert($project, note: 'Not drafted: '.RulesFilter::paymentWarning($project->details ?? []).'. Open to draft anyway.');
+                $telegram->projectAlert($project, note: $draftAnyway
+                    ? 'Payment not verified: '.RulesFilter::paymentWarning($project->details ?? []).'. A fast draft is on its way.'
+                    : 'Not drafted: '.RulesFilter::paymentWarning($project->details ?? []).'. Open to draft anyway.');
+            }
+            if ($draftAnyway) {
+                DraftProject::dispatch($project->id, alert: false, fast: true);
             }
 
             return;

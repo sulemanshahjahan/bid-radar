@@ -27,7 +27,7 @@ abstract class TestCase extends BaseTestCase
         // pricing; RangeMinimumPricingTest switches the mode on explicitly.
         config(['bidradar.defaults.pricing_mode' => 'average']);
         // Same for medium-fit auto drafts: the older tests expect medium projects to stay undrafted.
-        config(['bidradar.defaults.auto_draft_medium' => false]);
+        config(['bidradar.defaults.auto_draft_medium' => false, 'bidradar.defaults.draft_unverified_payment' => false]);
     }
 
     /** @param array<string, mixed> $overrides */

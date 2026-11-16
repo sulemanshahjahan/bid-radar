@@ -222,4 +222,16 @@ class FastDraftTest extends TestCase
         \Illuminate\Support\Facades\Queue::assertPushed(DraftProject::class, fn ($job) => $job->projectId === $fresh->id && $job->fast);
         \Illuminate\Support\Facades\Queue::assertPushed(DraftProject::class, fn ($job) => $job->projectId === $old->id && ! $job->fast);
     }
+
+    public function test_an_unverified_client_project_still_gets_a_fast_draft(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+        app(\App\Services\Settings::class)->set(['threshold_high' => 65, 'threshold_medium' => 40, 'draft_unverified_payment' => true]);
+        $project = $this->makeProject(['source' => 'freelancer', 'posted_at' => now()], ['client' => ['payment_verified' => false]]);
+        $this->claude->reply($this->scoringReply(['fit_score' => 80]));
+
+        app()->call([new \App\Jobs\ScoreProject($project->id), 'handle']);
+
+        \Illuminate\Support\Facades\Queue::assertPushed(DraftProject::class, fn ($job) => $job->projectId === $project->id && $job->fast);
+    }
 }

@@ -113,6 +113,7 @@ return [
         'threshold_medium' => 50,
         'quiet_alerts' => false,
         'push_min_score' => 1, // browser push for live projects scored at or above this (owner decision 2026-11-07: score > 0)
+        'draft_unverified_payment' => true, // fast-draft live projects held back only by unverified payment (owner bids on them)
         'auto_draft_medium' => true, // fast draft (no alert) for live projects at or above threshold_medium too (owner 2026-11-16: speed)
         'rank_rebuild' => false, // extra score adjustments to rebuild ranking with quick wins
         'skill_rank_scoring' => true, // +10/+5 for projects tagged with my top-10% skills, -10 when none of its skills is in my top 25% (ScoreAdjuster::skillRanks)

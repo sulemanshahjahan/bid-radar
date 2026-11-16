@@ -204,6 +204,10 @@
                 <input type="checkbox" wire:model="form.auto_draft_medium" class="rounded border-slate-300 text-teal-600">
                 Fast-draft medium-fit projects too (no alert), so any project you open is ready to bid
             </label>
+            <label class="flex items-center gap-2 text-sm">
+                <input type="checkbox" wire:model="form.draft_unverified_payment" class="rounded border-slate-300 text-teal-600">
+                Fast-draft projects whose client payment is not verified (the alert keeps the warning)
+            </label>
             <label class="flex items-start gap-2 text-sm">
                 <input type="checkbox" wire:model="form.rank_rebuild" class="mt-0.5 rounded border-slate-300 text-teal-600">
                 <span>Rank rebuild mode
