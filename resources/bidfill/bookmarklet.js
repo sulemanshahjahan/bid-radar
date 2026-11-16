@@ -47,8 +47,19 @@ var tries = 0;
   set(amount, p.a);
   var period = document.querySelector('input[placeholder*="hours" i]') || document.querySelector('input[placeholder*="days" i]');
   var isHours = period && /hours/i.test(period.placeholder);
-  set(period, isHours ? (p.hrs || 10) : (p.d || 7));
-  set(document.querySelector('textarea'), p.t);
+  // Hourly bids ask for a weekly hour limit, not the total estimate.
+  set(period, isHours ? Math.min(p.hrs || 10, 20) : (p.d || 7));
+  // Freelancer refuses proposals over 1500 characters: drop whole sentences from the longest middle paragraph.
+  var text = p.t || '';
+  var paras = text.split('\n\n');
+  for (var g = 0; text.length > 1500 && g < 8; g++) {
+    var idx = paras.length > 2 ? 1 : 0;
+    for (var i = 1; i < paras.length - 1; i++) if (paras[i].length > paras[idx].length) idx = i;
+    var ss = paras[idx].match(/[^.!?]+[.!?]+(\s|$)/g) || [paras[idx]];
+    if (ss.length < 2) { text = text.slice(0, 1500); break; }
+    ss.pop(); paras[idx] = ss.join('').trim(); text = paras.join('\n\n');
+  }
+  set(document.querySelector('textarea'), text);
   var ms = Array.prototype.filter.call(document.querySelectorAll('input'), function (e) {
     return e !== amount && /milestone|amount/i.test((e.placeholder || '') + (e.getAttribute('aria-label') || ''));
   });
@@ -78,6 +89,6 @@ var tries = 0;
   });
   var btn = Array.prototype.find.call(document.querySelectorAll('button'), function (x) { return /^Place Bid/i.test(x.innerText.trim()); });
   if (btn) { btn.scrollIntoView({ block: 'center' }); btn.style.outline = '4px solid #f59e0b'; }
-  banner('BidRadar filled: ' + p.c + ' ' + p.a + (p.h ? '/hr' : '') + ', ' + (isHours ? (p.hrs || 10) + ' hours' : (p.d || 7) + ' days') + '. ' + notes.join('; ') + '. Check it, then press ' + (btn ? '"' + btn.innerText.trim() + '"' : 'Place Bid') + '.', true);
+  banner('BidRadar filled: ' + p.c + ' ' + p.a + (p.h ? '/hr' : '') + ', ' + (isHours ? Math.min(p.hrs || 10, 20) + ' hours/week' : (p.d || 7) + ' days') + '. ' + notes.join('; ') + '. Check it, then press ' + (btn ? '"' + btn.innerText.trim() + '"' : 'Place Bid') + '.', true);
 })();
 }

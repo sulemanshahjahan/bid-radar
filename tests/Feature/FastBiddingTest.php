@@ -131,4 +131,20 @@ class FastBiddingTest extends TestCase
         $this->assertStringNotContainsString('btn.click()', $js);
         $this->assertStringContainsString('scrollIntoView', $js);
     }
+
+    public function test_a_proposal_over_freelancers_1500_character_limit_fails_the_checks(): void
+    {
+        $long = str_repeat('Your checkout loses buyers on mobile because the payment step reloads. ', 25);
+        $failures = app(\App\Services\Drafting\PostChecker::class)->check(['proposal_text' => $long], null, $long);
+
+        $this->assertNotEmpty(array_filter($failures, fn ($f) => str_contains($f, 'Freelancer accepts at most 1480')));
+    }
+
+    public function test_the_bookmarklet_trims_to_1500_characters_and_caps_weekly_hours(): void
+    {
+        $js = rawurldecode(substr(BidFill::bookmarklet(), strlen('javascript:')));
+
+        $this->assertStringContainsString('text.length > 1500', $js);
+        $this->assertStringContainsString('Math.min(p.hrs || 10, 20)', $js);
+    }
 }

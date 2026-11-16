@@ -32,6 +32,9 @@ class PostChecker
      * @param  array{word_min?: int, word_max?: int, client_word_limit?: int|null, phrase_opens?: bool, deliverables?: list<string>}  $rules  Per-draft limits (ProposalLength, ClientInstructions); Settings when absent.
      * @return list<string>
      */
+    /** Freelancer's limit on a bid proposal, with a small margin. */
+    public const MAX_CHARS = 1480;
+
     public function check(array $draft, ?string $testPhrase, string $sourceText, float $minimumBid = 0, ?string $briefText = null, ?string $factBankText = null, array $rules = []): array
     {
         $text = (string) ($draft['proposal_text'] ?? '');
@@ -44,6 +47,12 @@ class PostChecker
             $failures[] = "Word count is {$words}; the client asked for at most {$rules['client_word_limit']} words.";
         } elseif ($words < $min || $words > $max) {
             $failures[] = "Word count is {$words}; must be {$min}-{$max} for this job.";
+        }
+
+        // Freelancer refuses a proposal over 1500 characters ("Failed to create bid").
+        $chars = mb_strlen(trim($text));
+        if ($chars > self::MAX_CHARS) {
+            $failures[] = "The proposal is {$chars} characters; Freelancer accepts at most ".self::MAX_CHARS.'. Cut it to fit.';
         }
 
         if (! empty($rules['phrase_opens']) && $testPhrase && ! ClientInstructions::opensWith($text, $testPhrase)) {
